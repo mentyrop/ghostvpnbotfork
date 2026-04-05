@@ -98,6 +98,8 @@ SUPPORTED_AUTO_CHECK_METHODS: frozenset[PaymentMethod] = frozenset(
         PaymentMethod.KASSA_AI,
         PaymentMethod.RIOPAY,
         PaymentMethod.SEVERPAY,
+        # OpStateExt (боевой режим), если Result URL не дошёл
+        PaymentMethod.ROBOKASSA,
     }
 )
 
@@ -1148,6 +1150,8 @@ async def run_manual_check(
             else:
                 payment = None
         elif method == PaymentMethod.ROBOKASSA:
+            if settings.is_robokassa_enabled():
+                await payment_service.sync_robokassa_payment_status(db, local_payment_id=local_payment_id)
             return await get_payment_record(db, method, local_payment_id)
         else:
             logger.warning('Manual check requested for unsupported method', method=method)

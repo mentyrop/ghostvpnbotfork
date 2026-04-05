@@ -14,7 +14,6 @@ from app.bot import setup_bot
 from app.config import settings
 from app.database.database import sync_postgres_sequences
 from app.database.migrations import run_alembic_upgrade
-from app.database.models import PaymentMethod
 from app.localization.loader import ensure_locale_templates
 from app.logging_config import setup_logging
 from app.services.backup_service import backup_service
@@ -31,6 +30,7 @@ from app.services.payment_service import PaymentService
 from app.services.payment_verification_service import (
     PENDING_MAX_AGE,
     SUPPORTED_MANUAL_CHECK_METHODS,
+    _method_is_enabled,
     auto_payment_verification_service,
     get_enabled_auto_methods,
     method_display_name,
@@ -457,18 +457,8 @@ async def main():
             success_message='Ручная проверка активна',
         ) as stage:
             for method in SUPPORTED_MANUAL_CHECK_METHODS:
-                if method == PaymentMethod.YOOKASSA and settings.is_yookassa_enabled():
-                    verification_providers.append('YooKassa')
-                elif method == PaymentMethod.MULENPAY and settings.is_mulenpay_enabled():
-                    verification_providers.append(settings.get_mulenpay_display_name())
-                elif method == PaymentMethod.PAL24 and settings.is_pal24_enabled():
-                    verification_providers.append('PayPalych')
-                elif method == PaymentMethod.WATA and settings.is_wata_enabled():
-                    verification_providers.append('WATA')
-                elif method == PaymentMethod.HELEKET and settings.is_heleket_enabled():
-                    verification_providers.append('Heleket')
-                elif method == PaymentMethod.CRYPTOBOT and settings.is_cryptobot_enabled():
-                    verification_providers.append('CryptoBot')
+                if _method_is_enabled(method):
+                    verification_providers.append(method_display_name(method))
 
             if verification_providers:
                 hours = int(PENDING_MAX_AGE.total_seconds() // 3600)

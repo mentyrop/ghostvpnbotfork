@@ -20,6 +20,7 @@ from app.external.tribute import TributeService as TributeAPI
 from app.external.wata_webhook import WataWebhookHandler
 from app.services.pal24_service import Pal24Service
 from app.services.payment_service import PaymentService
+from app.services.robokassa_service import robokassa_service
 from app.services.tribute_service import TributeService
 
 
@@ -1258,8 +1259,9 @@ def create_payment_router(bot: Bot, payment_service: PaymentService) -> APIRoute
         async def robokassa_webhook(request: Request) -> Response:
             form_data = request.query_params
             out_sum = form_data.get('OutSum')
-            inv_id = form_data.get('InvId')
+            inv_id = form_data.get('InvId') or form_data.get('InvID')
             signature_value = form_data.get('SignatureValue')
+            shp_sorted = robokassa_service.extract_shp_sorted(form_data.multi_items())
             client_ip = _robokassa_client_ip(request)
             if not out_sum and not inv_id and not signature_value:
                 return JSONResponse(
@@ -1286,6 +1288,7 @@ def create_payment_router(bot: Bot, payment_service: PaymentService) -> APIRoute
                     inv_id=str(inv_id),
                     signature_value=str(signature_value),
                     client_ip=client_ip,
+                    shp_sorted=shp_sorted if shp_sorted else None,
                 )
                 if success:
                     return Response(f'OK{inv_id}', status_code=status.HTTP_200_OK)
@@ -1310,8 +1313,9 @@ def create_payment_router(bot: Bot, payment_service: PaymentService) -> APIRoute
                 return Response('Error', status_code=status.HTTP_400_BAD_REQUEST)
 
             out_sum = form_data.get('OutSum')
-            inv_id = form_data.get('InvId')
+            inv_id = form_data.get('InvId') or form_data.get('InvID')
             signature_value = form_data.get('SignatureValue')
+            shp_sorted = robokassa_service.extract_shp_sorted(form_data.multi_items())
             client_ip = _robokassa_client_ip(request)
             if not all([out_sum, inv_id, signature_value]):
                 logger.warning('Robokassa webhook POST: отсутствуют обязательные параметры')
@@ -1330,6 +1334,7 @@ def create_payment_router(bot: Bot, payment_service: PaymentService) -> APIRoute
                     inv_id=str(inv_id),
                     signature_value=str(signature_value),
                     client_ip=client_ip,
+                    shp_sorted=shp_sorted if shp_sorted else None,
                 )
                 if success:
                     return Response(f'OK{inv_id}', status_code=status.HTTP_200_OK)

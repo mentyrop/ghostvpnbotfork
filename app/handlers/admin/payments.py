@@ -189,10 +189,18 @@ def _is_checkable(record: PendingPayment) -> bool:
         return status in {'pending', 'waiting_for_capture'}
     if record.method == PaymentMethod.CRYPTOBOT:
         return status == 'active'
+    if record.method == PaymentMethod.CLOUDPAYMENTS:
+        return status in {'pending', 'authorized'}
     if record.method == PaymentMethod.FREEKASSA:
         return status in {'pending', 'created', ''}
     if record.method == PaymentMethod.KASSA_AI:
         return status in {'pending', 'created', 'processing', ''}
+    if record.method == PaymentMethod.RIOPAY:
+        return status in {'pending'}
+    if record.method == PaymentMethod.SEVERPAY:
+        return status in {'pending', 'processing'}
+    if record.method == PaymentMethod.ROBOKASSA:
+        return status == 'pending'
     return False
 
 

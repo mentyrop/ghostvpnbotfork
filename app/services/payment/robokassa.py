@@ -117,6 +117,7 @@ class RobokassaPaymentMixin:
         inv_id: str,
         signature_value: str,
         client_ip: str | None = None,
+        shp_sorted: list[tuple[str, str]] | None = None,
     ) -> bool:
         """
         Обрабатывает уведомление Result URL от Robokassa.
@@ -131,9 +132,11 @@ class RobokassaPaymentMixin:
                     inv_id=inv_id,
                 )
                 return False
-            if not robokassa_service.verify_result_signature(out_sum, inv_id, signature_value):
+            if not robokassa_service.verify_result_signature(
+                out_sum, inv_id, signature_value, shp_sorted=shp_sorted
+            ):
                 logger.warning(
-                    'Robokassa webhook: неверная подпись (проверь ROBOKASSA_PASSWORD_2 в .env и Пароль#2 в кабинете)',
+                    'Robokassa webhook: неверная подпись (проверь ROBOKASSA_PASSWORD_2 в .env и Пароль#2 в кабинете; в ЛК алгоритм MD5/SHA256)',
                     inv_id=inv_id,
                     out_sum=out_sum,
                 )
@@ -158,13 +161,11 @@ class RobokassaPaymentMixin:
                 logger.info('Robokassa webhook: платёж уже обработан inv_id=', inv_id=inv_id)
                 return True
 
-            amount_float = float(out_sum)
-            expected = payment.amount_kopeks / 100
-            if abs(amount_float - expected) > 0.01:
+            if not robokassa_service.out_sum_matches_kopeks(out_sum, payment.amount_kopeks):
                 logger.warning(
-                    'Robokassa webhook: несоответствие суммы ожидалось= получено=',
-                    expected=expected,
-                    received=amount_float,
+                    'Robokassa webhook: несоответствие суммы',
+                    expected_kopeks=payment.amount_kopeks,
+                    out_sum=out_sum,
                     inv_id=inv_id,
                 )
                 return False
@@ -180,6 +181,69 @@ class RobokassaPaymentMixin:
         except Exception as e:
             logger.exception('Robokassa webhook: ошибка обработки', e=e)
             return False
+
+    async def sync_robokassa_payment_status(
+        self,
+        db: AsyncSession,
+        *,
+        local_payment_id: int,
+    ) -> dict[str, Any] | None:
+        """
+        Опрос OpStateExt (боевой режим): если платёж проведён на стороне Robokassa, зачисляем как по вебхуку.
+        Тестовые платёжи через OpStateExt не запрашиваются (ограничение Robokassa).
+        """
+        if not settings.is_robokassa_enabled():
+            return None
+
+        robokassa_crud = import_module('app.database.crud.robokassa')
+        payment = await robokassa_crud.get_robokassa_payment_by_id(db, local_payment_id)
+        if not payment:
+            return None
+
+        if payment.is_paid:
+            return {'payment': payment}
+
+        if settings.ROBOKASSA_IS_TEST:
+            logger.debug(
+                'Robokassa sync: пропуск OpStateExt в тестовом режиме (используйте Result URL)',
+                local_payment_id=local_payment_id,
+            )
+            return {'payment': payment}
+
+        state = await robokassa_service.fetch_op_state_ext(payment.inv_id)
+        if state is None:
+            return {'payment': payment}
+
+        if state.result_code != 0:
+            logger.debug(
+                'Robokassa OpStateExt: Result.Code не 0',
+                inv_id=payment.inv_id,
+                result_code=state.result_code,
+            )
+            return {'payment': payment}
+
+        if state.state_code != 100:
+            return {'payment': payment}
+
+        out_raw = state.out_sum or ''
+        if not robokassa_service.out_sum_matches_kopeks(out_raw, payment.amount_kopeks):
+            logger.warning(
+                'Robokassa OpStateExt: сумма не совпадает с заказом',
+                inv_id=payment.inv_id,
+                out_sum=out_raw,
+                expected_kopeks=payment.amount_kopeks,
+            )
+            return {'payment': payment}
+
+        await robokassa_crud.update_robokassa_payment_status(
+            db=db,
+            payment=payment,
+            status='success',
+            is_paid=True,
+        )
+        await self._finalize_robokassa_payment(db, payment, trigger='op_state_sync')
+        await db.refresh(payment)
+        return {'payment': payment}
 
     async def _finalize_robokassa_payment(
         self,

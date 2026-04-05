@@ -4,12 +4,20 @@
 - Интерфейс оплаты: https://docs.robokassa.ru/ru/pay-interface
 - Уведомления: https://docs.robokassa.ru/ru/notifications-and-redirects
 - Фискализация (чеки): https://docs.robokassa.ru/ru/fiscalization
+- OpStateExt: https://docs.robokassa.ru/ru/xml-interfaces.html
 """
+
+from __future__ import annotations
 
 import hashlib
 import json
+import xml.etree.ElementTree as ET
+from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Iterable
 from urllib.parse import quote, urlencode
 
+import httpx
 import structlog
 
 from app.config import settings
@@ -19,6 +27,20 @@ logger = structlog.get_logger(__name__)
 
 # Базовый URL (тест через параметр IsTest=1)
 ROBOKASSA_BASE_URL = 'https://auth.robokassa.ru/Merchant/Index.aspx'
+OPSTATE_EXT_URL = 'https://auth.robokassa.ru/Merchant/WebService/Service.asmx/OpStateExt'
+
+
+def _xml_local(tag: str) -> str:
+    return tag.split('}', 1)[-1] if '}' in tag else tag
+
+
+@dataclass(frozen=True, slots=True)
+class OpStateExtResult:
+    """Ответ OpStateExt (упрощённо)."""
+
+    result_code: int
+    state_code: int | None
+    out_sum: str | None
 
 class RobokassaService:
     """Формирование ссылки на оплату и проверка подписи Result URL."""
@@ -88,6 +110,17 @@ class RobokassaService:
             sign_str = f'{self.login}:{out_str}:{inv_id}:{self.password1}'
         return hashlib.md5(sign_str.encode('utf-8')).hexdigest().lower()
 
+    @staticmethod
+    def extract_shp_sorted(pairs: Iterable[tuple[str, str]]) -> list[tuple[str, str]]:
+        """Параметры Shp_* для строки подписи Result URL (сортировка по имени ключа)."""
+        shp: list[tuple[str, str]] = []
+        for raw_k, raw_v in pairs:
+            k = (raw_k or '').strip()
+            if k.lower().startswith('shp_'):
+                shp.append((k, str(raw_v).strip()))
+        shp.sort(key=lambda item: item[0].lower())
+        return shp
+
     def verify_result_signature(
         self,
         out_sum: str,
@@ -99,15 +132,99 @@ class RobokassaService:
         Проверка подписи уведомления Result URL.
         Без Shp_: OutSum:InvId:Password2
         С Shp_: OutSum:InvId:Password2:Shp_key=value (сортировка по ключу).
+        В ЛК может быть выбран MD5 или SHA256 — проверяем оба.
+        OutSum в строке подписи — как в запросе (в т.ч. 6 знаков после точки в бою; не меняем запятую).
         """
+        out_for_sign = (out_sum or '').strip()
+        inv_norm = (inv_id or '').strip()
         if shp_sorted:
             shp_part = ':'.join(f'{k}={v}' for k, v in shp_sorted)
-            sign_str = f'{out_sum}:{inv_id}:{self.password2}:{shp_part}'
+            sign_str = f'{out_for_sign}:{inv_norm}:{self.password2}:{shp_part}'
         else:
-            sign_str = f'{out_sum}:{inv_id}:{self.password2}'
-        expected = hashlib.md5(sign_str.encode('utf-8')).hexdigest().lower()
+            sign_str = f'{out_for_sign}:{inv_norm}:{self.password2}'
+        payload = sign_str.encode('utf-8')
         received = (signature_value or '').strip().lower()
-        return received == expected
+        md5_hex = hashlib.md5(payload).hexdigest().lower()
+        sha256_hex = hashlib.sha256(payload).hexdigest().lower()
+        return received in {md5_hex, sha256_hex}
+
+    def build_op_state_ext_signature(self, inv_id: int) -> str:
+        """MD5(MerchantLogin:InvoiceID:Password2) для OpStateExt."""
+        sign_str = f'{self.login}:{inv_id}:{self.password2}'
+        return hashlib.md5(sign_str.encode('utf-8')).hexdigest().lower()
+
+    def parse_op_state_ext_xml(self, xml_text: str) -> OpStateExtResult | None:
+        try:
+            root = ET.fromstring(xml_text)
+        except ET.ParseError as e:
+            logger.warning('Robokassa OpStateExt: XML parse error', error=str(e))
+            return None
+
+        result_code = -1
+        state_code: int | None = None
+        out_sum: str | None = None
+
+        for el in root.iter():
+            if _xml_local(el.tag) != 'Result':
+                continue
+            for ch in el:
+                if _xml_local(ch.tag) == 'Code' and ch.text is not None:
+                    try:
+                        result_code = int(ch.text.strip())
+                    except ValueError:
+                        result_code = -1
+            break
+
+        for el in root.iter():
+            if _xml_local(el.tag) != 'State':
+                continue
+            for ch in el:
+                if _xml_local(ch.tag) == 'Code' and ch.text is not None:
+                    try:
+                        state_code = int(ch.text.strip())
+                    except ValueError:
+                        state_code = None
+            break
+
+        for el in root.iter():
+            if _xml_local(el.tag) != 'Info':
+                continue
+            for ch in el:
+                if _xml_local(ch.tag) == 'OutSum' and ch.text and ch.text.strip():
+                    out_sum = ch.text.strip()
+            break
+
+        return OpStateExtResult(result_code=result_code, state_code=state_code, out_sum=out_sum)
+
+    async def fetch_op_state_ext(self, inv_id: int) -> OpStateExtResult | None:
+        """
+        Запрос статуса операции (только основной режим, не тестовые платежи).
+        State.Code 100 — успешно оплачено.
+        """
+        params = {
+            'MerchantLogin': self.login,
+            'InvoiceID': inv_id,
+            'Signature': self.build_op_state_ext_signature(inv_id),
+        }
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(OPSTATE_EXT_URL, params=params)
+            response.raise_for_status()
+        except httpx.HTTPError as e:
+            logger.warning('Robokassa OpStateExt: HTTP error', inv_id=inv_id, error=str(e))
+            return None
+        return self.parse_op_state_ext_xml(response.text)
+
+    @staticmethod
+    def out_sum_matches_kopeks(out_sum_raw: str, amount_kopeks: int) -> bool:
+        """Сравнение суммы из уведомления/API с ожидаемыми копейками (учёт 6 знаков в OutSum)."""
+        try:
+            paid = (Decimal(str(out_sum_raw).strip().replace(',', '.')) * Decimal(100)).quantize(
+                Decimal('1'), rounding=ROUND_HALF_UP
+            )
+            return int(paid) == int(amount_kopeks)
+        except Exception:
+            return False
 
     def is_trusted_ip(self, client_ip: str) -> bool:
         """Проверка, что запрос на Result URL пришёл с IP Robokassa (опционально)."""
