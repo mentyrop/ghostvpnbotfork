@@ -1996,6 +1996,27 @@ class Settings(BaseSettings):
     def is_severpay_enabled(self) -> bool:
         return self.SEVERPAY_ENABLED and self.SEVERPAY_MID is not None and self.SEVERPAY_TOKEN is not None
 
+    def has_payment_webhook_providers_enabled(self) -> bool:
+        """Провайдеры с маршрутами в create_payment_router — нужен запущенный единый веб-сервер."""
+        return any(
+            [
+                self.TRIBUTE_ENABLED,
+                self.is_cryptobot_enabled(),
+                self.is_mulenpay_enabled(),
+                self.is_yookassa_enabled(),
+                self.is_pal24_enabled(),
+                self.is_wata_enabled(),
+                self.is_heleket_enabled(),
+                self.is_platega_enabled(),
+                self.is_cloudpayments_enabled(),
+                self.is_freekassa_enabled(),
+                self.is_kassa_ai_enabled(),
+                self.is_riopay_enabled(),
+                self.is_severpay_enabled(),
+                self.is_robokassa_enabled(),
+            ]
+        )
+
     def get_severpay_display_name(self) -> str:
         name = (self.SEVERPAY_DISPLAY_NAME or '').strip()
         return name if name else 'SeverPay'

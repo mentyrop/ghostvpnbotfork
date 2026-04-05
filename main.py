@@ -537,17 +537,7 @@ async def main():
         polling_enabled = bot_run_mode == 'polling'
         telegram_webhook_enabled = bot_run_mode == 'webhook'
 
-        payment_webhooks_enabled = any(
-            [
-                settings.TRIBUTE_ENABLED,
-                settings.is_cryptobot_enabled(),
-                settings.is_mulenpay_enabled(),
-                settings.is_yookassa_enabled(),
-                settings.is_pal24_enabled(),
-                settings.is_wata_enabled(),
-                settings.is_heleket_enabled(),
-            ]
-        )
+        payment_webhooks_enabled = settings.has_payment_webhook_providers_enabled()
 
         async with timeline.stage(
             'Единый веб-сервер',
@@ -558,6 +548,8 @@ async def main():
                 settings.is_web_api_enabled()
                 or telegram_webhook_enabled
                 or payment_webhooks_enabled
+                or settings.is_remnawave_webhook_enabled()
+                or settings.is_cabinet_enabled()
                 or settings.get_miniapp_static_path().exists()
             )
 

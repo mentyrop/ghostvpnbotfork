@@ -26,6 +26,17 @@ from app.services.tribute_service import TributeService
 logger = structlog.get_logger(__name__)
 
 
+def _robokassa_client_ip(request: Request) -> str | None:
+    """IP для ROBOKASSA_TRUSTED_IPS: сначала X-Real-IP (nginx), иначе первый X-Forwarded-For, иначе TCP-клиент."""
+    real_ip = (request.headers.get('X-Real-IP') or request.headers.get('x-real-ip') or '').strip()
+    if real_ip:
+        return real_ip.split(',')[0].strip()
+    x_forwarded_for = request.headers.get('X-Forwarded-For') or request.headers.get('x-forwarded-for')
+    if x_forwarded_for:
+        return x_forwarded_for.split(',')[0].strip()
+    return request.client.host if request.client else None
+
+
 def _create_cors_response() -> Response:
     return Response(
         status_code=status.HTTP_200_OK,
@@ -1249,12 +1260,7 @@ def create_payment_router(bot: Bot, payment_service: PaymentService) -> APIRoute
             out_sum = form_data.get('OutSum')
             inv_id = form_data.get('InvId')
             signature_value = form_data.get('SignatureValue')
-            x_forwarded_for = request.headers.get('X-Forwarded-For')
-            client_ip = (
-                x_forwarded_for.split(',')[0].strip()
-                if x_forwarded_for
-                else (request.client.host if request.client else None)
-            )
+            client_ip = _robokassa_client_ip(request)
             if not out_sum and not inv_id and not signature_value:
                 return JSONResponse(
                     {
@@ -1306,12 +1312,7 @@ def create_payment_router(bot: Bot, payment_service: PaymentService) -> APIRoute
             out_sum = form_data.get('OutSum')
             inv_id = form_data.get('InvId')
             signature_value = form_data.get('SignatureValue')
-            x_forwarded_for = request.headers.get('X-Forwarded-For')
-            client_ip = (
-                x_forwarded_for.split(',')[0].strip()
-                if x_forwarded_for
-                else (request.client.host if request.client else None)
-            )
+            client_ip = _robokassa_client_ip(request)
             if not all([out_sum, inv_id, signature_value]):
                 logger.warning('Robokassa webhook POST: отсутствуют обязательные параметры')
                 return Response('Missing parameters', status_code=status.HTTP_400_BAD_REQUEST)
