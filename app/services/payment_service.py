@@ -25,6 +25,7 @@ from app.services.payment import (
     Pal24PaymentMixin,
     PaymentCommonMixin,
     PlategaPaymentMixin,
+    RobokassaPaymentMixin,
     TelegramStarsMixin,
     TributePaymentMixin,
     WataPaymentMixin,
@@ -355,6 +356,7 @@ class PaymentService(
     KassaAiPaymentMixin,
     RioPayPaymentMixin,
     SeverPayPaymentMixin,
+    RobokassaPaymentMixin,
 ):
     """Основной интерфейс платежей, делегирующий работу специализированным mixin-ам."""
 

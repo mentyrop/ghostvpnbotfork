@@ -13,9 +13,22 @@ def verify_payment_amount(
 
 def get_available_payment_methods() -> list[dict[str, str]]:
     """
-    Возвращает список доступных способов оплаты с их настройками
+    Возвращает список доступных способов оплаты с их настройками.
+    При включённой Robokassa она показывается первой.
     """
     methods = []
+
+    if settings.is_robokassa_enabled():
+        robokassa_name = settings.get_robokassa_display_name()
+        methods.append(
+            {
+                'id': 'robokassa',
+                'name': robokassa_name,
+                'icon': '💳',
+                'description': 'СБП, карты РФ',
+                'callback': 'topup_robokassa',
+            }
+        )
 
     if settings.TELEGRAM_STARS_ENABLED:
         methods.append(
@@ -311,6 +324,10 @@ def is_payment_method_available(method_id: str) -> bool:
         return settings.is_kassa_ai_enabled()
     if method_id == 'riopay':
         return settings.is_riopay_enabled()
+    if method_id == 'severpay':
+        return settings.is_severpay_enabled()
+    if method_id == 'robokassa':
+        return settings.is_robokassa_enabled()
     if method_id == 'support':
         return settings.is_support_topup_enabled()
     return False
@@ -333,6 +350,9 @@ def get_payment_method_status() -> dict[str, bool]:
         'cloudpayments': settings.is_cloudpayments_enabled(),
         'freekassa': settings.is_freekassa_enabled(),
         'kassa_ai': settings.is_kassa_ai_enabled(),
+        'riopay': settings.is_riopay_enabled(),
+        'severpay': settings.is_severpay_enabled(),
+        'robokassa': settings.is_robokassa_enabled(),
         'support': settings.is_support_topup_enabled(),
     }
 
@@ -365,5 +385,11 @@ def get_enabled_payment_methods_count() -> int:
     if settings.is_freekassa_enabled():
         count += 1
     if settings.is_kassa_ai_enabled():
+        count += 1
+    if settings.is_riopay_enabled():
+        count += 1
+    if settings.is_severpay_enabled():
+        count += 1
+    if settings.is_robokassa_enabled():
         count += 1
     return count

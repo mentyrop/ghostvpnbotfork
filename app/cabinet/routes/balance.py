@@ -945,6 +945,25 @@ def _get_status_info(record: PendingPayment) -> tuple[str, str]:
         }
         return mapping.get(status, ('❓', 'Неизвестно'))
 
+    if record.method == PaymentMethod.SEVERPAY:
+        mapping = {
+            'pending': ('⏳', 'Ожидает оплаты'),
+            'processing': ('⌛', 'Обрабатывается'),
+            'success': ('✅', 'Оплачено'),
+            'failed': ('❌', 'Ошибка'),
+            'expired': ('⌛', 'Истёк'),
+        }
+        return mapping.get(status, ('❓', 'Неизвестно'))
+
+    if record.method == PaymentMethod.ROBOKASSA:
+        mapping = {
+            'pending': ('⏳', 'Ожидает оплаты'),
+            'success': ('✅', 'Оплачено'),
+            'failed': ('❌', 'Ошибка'),
+            'expired': ('⌛', 'Истёк'),
+        }
+        return mapping.get(status, ('❓', 'Неизвестно'))
+
     return '❓', 'Неизвестно'
 
 
@@ -977,6 +996,10 @@ def _is_checkable(record: PendingPayment) -> bool:
         return status in {'pending', 'created', 'processing'}
     if record.method == PaymentMethod.RIOPAY:
         return status in {'pending'}
+    if record.method == PaymentMethod.SEVERPAY:
+        return status in {'pending', 'processing'}
+    if record.method == PaymentMethod.ROBOKASSA:
+        return status == 'pending'
     return False
 
 
@@ -1005,6 +1028,8 @@ def _get_payment_url(record: PendingPayment) -> str | None:
         PaymentMethod.FREEKASSA,
         PaymentMethod.KASSA_AI,
         PaymentMethod.RIOPAY,
+        PaymentMethod.SEVERPAY,
+        PaymentMethod.ROBOKASSA,
     ):
         payment_url = getattr(payment, 'payment_url', None) or payment_url
 
@@ -1095,6 +1120,8 @@ async def get_latest_payment_by_method(
         Pal24Payment,
         PlategaPayment,
         RioPayPayment,
+        RobokassaPayment,
+        SeverPayPayment,
         WataPayment,
         YooKassaPayment,
     )
@@ -1111,6 +1138,8 @@ async def get_latest_payment_by_method(
         PaymentMethod.FREEKASSA: FreekassaPayment,
         PaymentMethod.KASSA_AI: KassaAiPayment,
         PaymentMethod.RIOPAY: RioPayPayment,
+        PaymentMethod.SEVERPAY: SeverPayPayment,
+        PaymentMethod.ROBOKASSA: RobokassaPayment,
     }
 
     model = model_map.get(payment_method)
@@ -1137,10 +1166,15 @@ async def get_latest_payment_by_method(
             detail='No recent payments found',
         )
 
+    identifier = str(
+        getattr(payment, 'correlation_id', None)
+        or getattr(payment, 'order_id', None)
+        or payment.id
+    )
     record = PendingPayment(
         local_id=payment.id,
         method=payment_method,
-        identifier=str(getattr(payment, 'correlation_id', None) or payment.id),
+        identifier=identifier,
         amount_kopeks=payment.amount_kopeks,
         status=payment.status or '',
         is_paid=bool(payment.is_paid),

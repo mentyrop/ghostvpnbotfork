@@ -562,6 +562,31 @@ class Settings(BaseSettings):
     KASSA_AI_SBERPAY_ENABLED: bool = False  # SberPay — payment_system_id=43
     KASSA_AI_SBERPAY_DISPLAY_NAME: str = 'SberPay (KassaAI)'
 
+    # Robokassa (https://robokassa.ru)
+    ROBOKASSA_ENABLED: bool = False
+    ROBOKASSA_MERCHANT_LOGIN: str | None = None
+    ROBOKASSA_PASSWORD_1: str | None = None  # Пароль #1 для формы оплаты (SignatureValue)
+    ROBOKASSA_PASSWORD_2: str | None = None  # Пароль #2 для Result URL (уведомление об оплате)
+    ROBOKASSA_DISPLAY_NAME: str = 'Robokassa'
+    ROBOKASSA_CURRENCY: str = 'RUB'
+    ROBOKASSA_MIN_AMOUNT_KOPEKS: int = 10000  # 100 руб
+    ROBOKASSA_MAX_AMOUNT_KOPEKS: int = 100000000  # 1 000 000 руб
+    ROBOKASSA_PAYMENT_TIMEOUT_SECONDS: int = 3600
+    ROBOKASSA_WEBHOOK_PATH: str = '/robokassa-webhook'
+    ROBOKASSA_IS_TEST: bool = False  # Тестовый режим (pay.robokassa.ru vs auth.robokassa.ru)
+    # Чек (фискализация ФЗ-54): https://docs.robokassa.ru/ru/fiscalization
+    ROBOKASSA_RECEIPT_ENABLED: bool = False
+    ROBOKASSA_RECEIPT_SNO: str = ''  # СНО: osn, usn_income, usn_income_outcome, esn, patent (пусто = из ЛК)
+    ROBOKASSA_RECEIPT_TAX: str = 'none'  # none, vat20, vat10, vat0 и т.д.
+    ROBOKASSA_RECEIPT_PAYMENT_METHOD: str = 'full_payment'  # full_payment, full_prepayment, advance и т.д.
+    ROBOKASSA_RECEIPT_PAYMENT_OBJECT: str = 'service'  # service, commodity, payment и т.д.
+    ROBOKASSA_RECEIPT_ITEM_NAME: str = ''  # Наименование позиции (до 128 символов), пусто = PAYMENT_BALANCE_DESCRIPTION
+    # Редиректы после оплаты (опционально; иначе берутся из настроек магазина в ЛК)
+    ROBOKASSA_SUCCESS_URL: str = ''
+    ROBOKASSA_FAIL_URL: str = ''
+    # IP для проверки Result URL (документация: 185.59.216.65, 185.59.217.65)
+    ROBOKASSA_TRUSTED_IPS: str = '185.59.216.65,185.59.217.65'
+
     # RioPay (api.riopay.online) v2.0.1
     RIOPAY_ENABLED: bool = False
     RIOPAY_API_TOKEN: str | None = None  # x-api-token header
@@ -1942,6 +1967,21 @@ class Settings(BaseSettings):
 
     def get_kassa_ai_display_name_html(self) -> str:
         return html.escape(self.get_kassa_ai_display_name())
+
+    def is_robokassa_enabled(self) -> bool:
+        return (
+            self.ROBOKASSA_ENABLED
+            and self.ROBOKASSA_MERCHANT_LOGIN is not None
+            and self.ROBOKASSA_PASSWORD_1 is not None
+            and self.ROBOKASSA_PASSWORD_2 is not None
+        )
+
+    def get_robokassa_display_name(self) -> str:
+        name = (self.ROBOKASSA_DISPLAY_NAME or '').strip()
+        return name if name else 'Robokassa'
+
+    def get_robokassa_display_name_html(self) -> str:
+        return html.escape(self.get_robokassa_display_name())
 
     def is_riopay_enabled(self) -> bool:
         return self.RIOPAY_ENABLED and self.RIOPAY_API_TOKEN is not None

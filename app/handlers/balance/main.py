@@ -149,6 +149,13 @@ async def route_payment_by_method(
             await process_severpay_payment_amount(message, db_user, db, amount_kopeks, state)
         return True
 
+    if payment_method == 'robokassa':
+        from .robokassa import process_robokassa_payment_amount
+
+        async with AsyncSessionLocal() as db:
+            await process_robokassa_payment_amount(message, db_user, db, amount_kopeks, state)
+        return True
+
     if payment_method == 'riopay':
         from .riopay import process_riopay_payment_amount
 
@@ -469,19 +476,30 @@ async def process_topup_amount(message: types.Message, db_user: User, state: FSM
 
         amount_rubles = float(amount_text.replace(',', '.'))
 
-        if amount_rubles < 1:
-            await message.answer('Минимальная сумма пополнения: 1 ₽', reply_markup=get_back_keyboard(db_user.language))
+        data = await state.get_data()
+        payment_method = data.get('payment_method', 'stars')
+
+        min_rubles = 1.0
+        max_rubles = 50000.0
+        if payment_method == 'robokassa':
+            min_rubles = settings.ROBOKASSA_MIN_AMOUNT_KOPEKS / 100
+            max_rubles = settings.ROBOKASSA_MAX_AMOUNT_KOPEKS / 100
+
+        if amount_rubles < min_rubles:
+            await message.answer(
+                f'Минимальная сумма пополнения: {min_rubles:,.0f} ₽'.replace(',', ' '),
+                reply_markup=get_back_keyboard(db_user.language),
+            )
             return
 
-        if amount_rubles > 50000:
+        if amount_rubles > max_rubles:
             await message.answer(
-                'Максимальная сумма пополнения: 50,000 ₽', reply_markup=get_back_keyboard(db_user.language)
+                f'Максимальная сумма пополнения: {max_rubles:,.0f} ₽'.replace(',', ' '),
+                reply_markup=get_back_keyboard(db_user.language),
             )
             return
 
         amount_kopeks = int(amount_rubles * 100)
-        data = await state.get_data()
-        payment_method = data.get('payment_method', 'stars')
 
         if payment_method in ['yookassa', 'yookassa_sbp']:
             if amount_kopeks < settings.YOOKASSA_MIN_AMOUNT_KOPEKS:
@@ -718,6 +736,11 @@ def register_balance_handlers(dp: Dispatcher):
     from .severpay import start_severpay_topup
 
     dp.callback_query.register(start_severpay_topup, F.data == 'topup_severpay')
+
+    from .robokassa import process_robokassa_quick_amount, start_robokassa_topup
+
+    dp.callback_query.register(start_robokassa_topup, F.data == 'topup_robokassa')
+    dp.callback_query.register(process_robokassa_quick_amount, F.data.startswith('topup_amount|robokassa|'))
 
     from .mulenpay import check_mulenpay_payment_status
 

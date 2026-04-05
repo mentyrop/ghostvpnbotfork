@@ -874,12 +874,12 @@ class RemnaWaveService:
             return False
 
     async def get_all_squads(self) -> list[dict[str, Any]]:
+        """Возвращает все сквады для синхронизации: internal + external (новые серверы на панели часто создаются как external)."""
         try:
             async with self.get_api_client() as api:
-                squads = await api.get_internal_squads()
-
+                internal_squads = await api.get_internal_squads()
                 result = []
-                for squad in squads:
+                for squad in internal_squads:
                     inbounds = [
                         asdict(inbound) if is_dataclass(inbound) else inbound for inbound in squad.inbounds or []
                     ]
@@ -892,8 +892,33 @@ class RemnaWaveService:
                             'inbounds': inbounds,
                         }
                     )
+                internal_count = len(result)
+                seen_uuids = {s['uuid'] for s in result}
 
-                logger.info('✅ Получено сквадов из Remnawave', result_count=len(result))
+                try:
+                    external_squads = await api.get_external_squads()
+                    for squad in external_squads:
+                        if squad.uuid in seen_uuids:
+                            continue
+                        seen_uuids.add(squad.uuid)
+                        result.append(
+                            {
+                                'uuid': squad.uuid,
+                                'name': squad.name,
+                                'members_count': squad.members_count,
+                                'inbounds_count': 0,
+                                'inbounds': [],
+                            }
+                        )
+                except Exception as ext_e:
+                    logger.warning('External squads не загружены (возможно, API не поддерживает)', error=ext_e)
+
+                logger.info(
+                    '✅ Получено сквадов из Remnawave',
+                    result_count=len(result),
+                    internal_count=internal_count,
+                    external_count=len(result) - internal_count,
+                )
                 return result
 
         except Exception as e:

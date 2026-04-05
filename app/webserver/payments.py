@@ -1241,6 +1241,111 @@ def create_payment_router(bot: Bot, payment_service: PaymentService) -> APIRoute
 
         routes_registered = True
 
+    if settings.is_robokassa_enabled():
+
+        @router.get(settings.ROBOKASSA_WEBHOOK_PATH)
+        async def robokassa_webhook(request: Request) -> Response:
+            form_data = request.query_params
+            out_sum = form_data.get('OutSum')
+            inv_id = form_data.get('InvId')
+            signature_value = form_data.get('SignatureValue')
+            x_forwarded_for = request.headers.get('X-Forwarded-For')
+            client_ip = (
+                x_forwarded_for.split(',')[0].strip()
+                if x_forwarded_for
+                else (request.client.host if request.client else None)
+            )
+            if not out_sum and not inv_id and not signature_value:
+                return JSONResponse(
+                    {
+                        'status': 'ok',
+                        'service': 'robokassa_webhook',
+                        'enabled': settings.is_robokassa_enabled(),
+                    }
+                )
+            if not all([out_sum, inv_id, signature_value]):
+                logger.warning('Robokassa webhook: отсутствуют обязательные параметры')
+                return Response('Missing parameters', status_code=status.HTTP_400_BAD_REQUEST)
+
+            db_generator = get_db()
+            try:
+                db = await db_generator.__anext__()
+            except StopAsyncIteration:
+                return Response('DB Error', status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            try:
+                success = await payment_service.process_robokassa_webhook(
+                    db,
+                    out_sum=str(out_sum),
+                    inv_id=str(inv_id),
+                    signature_value=str(signature_value),
+                    client_ip=client_ip,
+                )
+                if success:
+                    return Response(f'OK{inv_id}', status_code=status.HTTP_200_OK)
+
+                logger.error('Robokassa webhook processing failed: inv_id=', inv_id=inv_id)
+                return Response('Error', status_code=status.HTTP_400_BAD_REQUEST)
+            except Exception as e:
+                logger.exception('Robokassa webhook processing error', e=e)
+                return Response('Error', status_code=status.HTTP_400_BAD_REQUEST)
+            finally:
+                try:
+                    await db_generator.__anext__()
+                except StopAsyncIteration:
+                    pass
+
+        @router.post(settings.ROBOKASSA_WEBHOOK_PATH)
+        async def robokassa_webhook_post(request: Request) -> Response:
+            try:
+                form_data = await request.form()
+            except Exception as form_error:
+                logger.error('Robokassa webhook POST: не удалось прочитать данные', form_error=form_error)
+                return Response('Error', status_code=status.HTTP_400_BAD_REQUEST)
+
+            out_sum = form_data.get('OutSum')
+            inv_id = form_data.get('InvId')
+            signature_value = form_data.get('SignatureValue')
+            x_forwarded_for = request.headers.get('X-Forwarded-For')
+            client_ip = (
+                x_forwarded_for.split(',')[0].strip()
+                if x_forwarded_for
+                else (request.client.host if request.client else None)
+            )
+            if not all([out_sum, inv_id, signature_value]):
+                logger.warning('Robokassa webhook POST: отсутствуют обязательные параметры')
+                return Response('Missing parameters', status_code=status.HTTP_400_BAD_REQUEST)
+
+            db_generator = get_db()
+            try:
+                db = await db_generator.__anext__()
+            except StopAsyncIteration:
+                return Response('DB Error', status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            try:
+                success = await payment_service.process_robokassa_webhook(
+                    db,
+                    out_sum=str(out_sum),
+                    inv_id=str(inv_id),
+                    signature_value=str(signature_value),
+                    client_ip=client_ip,
+                )
+                if success:
+                    return Response(f'OK{inv_id}', status_code=status.HTTP_200_OK)
+
+                logger.error('Robokassa webhook POST processing failed: inv_id=', inv_id=inv_id)
+                return Response('Error', status_code=status.HTTP_400_BAD_REQUEST)
+            except Exception as e:
+                logger.exception('Robokassa webhook POST processing error', e=e)
+                return Response('Error', status_code=status.HTTP_400_BAD_REQUEST)
+            finally:
+                try:
+                    await db_generator.__anext__()
+                except StopAsyncIteration:
+                    pass
+
+        routes_registered = True
+
     if routes_registered:
 
         @router.get('/health/payment-webhooks')
@@ -1261,6 +1366,7 @@ def create_payment_router(bot: Bot, payment_service: PaymentService) -> APIRoute
                     'kassa_ai_enabled': settings.is_kassa_ai_enabled(),
                     'riopay_enabled': settings.is_riopay_enabled(),
                     'severpay_enabled': settings.is_severpay_enabled(),
+                    'robokassa_enabled': settings.is_robokassa_enabled(),
                 }
             )
 

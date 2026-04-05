@@ -146,6 +146,13 @@ def _get_method_defaults() -> dict:
             'default_max': settings.SEVERPAY_MAX_AMOUNT_KOPEKS,
             'available_sub_options': None,
         },
+        'robokassa': {
+            'default_display_name': settings.get_robokassa_display_name(),
+            'is_configured': settings.is_robokassa_enabled(),
+            'default_min': settings.ROBOKASSA_MIN_AMOUNT_KOPEKS,
+            'default_max': settings.ROBOKASSA_MAX_AMOUNT_KOPEKS,
+            'available_sub_options': None,
+        },
     }
 
 
@@ -188,6 +195,7 @@ DEFAULT_METHOD_ORDER = [
     'kassa_ai',
     'riopay',
     'severpay',
+    'robokassa',
 ]
 
 
