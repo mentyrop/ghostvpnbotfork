@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 from importlib import import_module
 from typing import Any
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -55,11 +58,6 @@ class RobokassaPaymentMixin:
             )
             return None
 
-        # Уникальный InvId (целое число для Robokassa)
-        inv_id = int(datetime.now(UTC).timestamp() * 1000) % (10**9)
-        if inv_id < 100000:
-            inv_id += 100000
-        order_id = f'rk_{user_id}_{uuid.uuid4().hex[:12]}'
         amount_rubles = amount_kopeks / 100
         currency = settings.ROBOKASSA_CURRENCY
         expires_at = datetime.now(UTC) + timedelta(seconds=settings.ROBOKASSA_PAYMENT_TIMEOUT_SECONDS)
@@ -68,31 +66,63 @@ class RobokassaPaymentMixin:
             getattr(settings, 'ROBOKASSA_RECEIPT_ITEM_NAME', '').strip()
             or getattr(settings, 'PAYMENT_BALANCE_DESCRIPTION', 'Пополнение баланса')
         )
-        payment_url = robokassa_service.build_payment_url(
-            inv_id=inv_id,
-            out_sum=amount_rubles,
-            description=description,
-            email=email,
-            is_test=settings.ROBOKASSA_IS_TEST,
-            receipt_item_name=receipt_item_name,
-        )
 
         robokassa_crud = import_module('app.database.crud.robokassa')
-        local_payment = await robokassa_crud.create_robokassa_payment(
-            db=db,
-            user_id=user_id,
-            inv_id=inv_id,
-            order_id=order_id,
-            amount_kopeks=amount_kopeks,
-            currency=currency,
-            description=description,
-            payment_url=payment_url,
-            expires_at=expires_at,
-        )
+        inv_id: int | None = None
+        order_id: str | None = None
+        payment_url: str | None = None
+        local_payment = None
 
-        # Сразу фиксируем в БД: Result URL приходит в отдельной сессии FastAPI и не видит
-        # незакоммиченную строку, пока AuthMiddleware не сделает commit после хендлера.
-        await db.commit()
+        for attempt in range(16):
+            # Случайный InvId 100M–999M: меньше коллизий, чем ms % 1e9 при параллельных оплатах
+            candidate_inv = secrets.randbelow(900_000_000) + 100_000_000
+            candidate_order = f'rk_{user_id}_{uuid.uuid4().hex[:12]}'
+            candidate_url = robokassa_service.build_payment_url(
+                inv_id=candidate_inv,
+                out_sum=amount_rubles,
+                description=description,
+                email=email,
+                is_test=settings.ROBOKASSA_IS_TEST,
+                receipt_item_name=receipt_item_name,
+            )
+            try:
+                local_payment = await robokassa_crud.create_robokassa_payment(
+                    db=db,
+                    user_id=user_id,
+                    inv_id=candidate_inv,
+                    order_id=candidate_order,
+                    amount_kopeks=amount_kopeks,
+                    currency=currency,
+                    description=description,
+                    payment_url=candidate_url,
+                    expires_at=expires_at,
+                )
+                await db.commit()
+            except IntegrityError:
+                await db.rollback()
+                logger.warning(
+                    'Robokassa: коллизия inv_id/order_id при вставке, повтор',
+                    attempt=attempt,
+                    candidate_inv=candidate_inv,
+                )
+                continue
+
+            verify = await robokassa_crud.get_robokassa_payment_by_inv_id(db, candidate_inv)
+            if not verify:
+                logger.error(
+                    'Robokassa: после commit запись с inv_id не читается (проверьте БД и миграции)',
+                    inv_id=candidate_inv,
+                )
+                return None
+
+            inv_id = candidate_inv
+            order_id = candidate_order
+            payment_url = candidate_url
+            break
+
+        if inv_id is None or order_id is None or payment_url is None or local_payment is None:
+            logger.error('Robokassa: не удалось создать платёж с уникальным inv_id')
+            return None
 
         logger.info(
             'Robokassa: создан платёж inv_id= order_id= user_id= amount=',
@@ -147,17 +177,28 @@ class RobokassaPaymentMixin:
                 return False
 
             robokassa_crud = import_module('app.database.crud.robokassa')
+            inv_clean = (inv_id or '').strip().strip('\ufeff')
             try:
-                inv_id_int = int(inv_id)
+                inv_id_int = int(inv_clean)
             except ValueError:
                 logger.warning('Robokassa webhook: неверный InvId', inv_id=inv_id)
                 return False
 
-            payment = await robokassa_crud.get_robokassa_payment_by_inv_id(db, inv_id_int)
+            payment = None
+            for attempt in range(5):
+                payment = await robokassa_crud.get_robokassa_payment_by_inv_id(db, inv_id_int)
+                if payment:
+                    break
+                if attempt < 4:
+                    await asyncio.sleep(0.15 * (attempt + 1))
+
             if not payment:
+                recent = await robokassa_crud.get_latest_robokassa_inv_ids(db, limit=10)
                 logger.warning(
-                    'Robokassa webhook: платёж не найден в БД (другой сервер/инстанс или платёж не сохранился)',
-                    inv_id=inv_id,
+                    'Robokassa webhook: платёж не найден в БД по inv_id (сверьте MERCHANT_LOGIN/БД; '
+                    'в логе при создании должен быть тот же inv_id)',
+                    inv_id_requested=inv_id_int,
+                    latest_inv_ids_in_db=recent,
                 )
                 return False
 

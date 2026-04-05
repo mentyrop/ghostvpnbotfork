@@ -61,6 +61,14 @@ async def get_robokassa_payment_by_inv_id(db: AsyncSession, inv_id: int) -> Robo
     return result.scalar_one_or_none()
 
 
+async def get_latest_robokassa_inv_ids(db: AsyncSession, *, limit: int = 10) -> list[int]:
+    """Последние InvId в таблице (диагностика вебхука)."""
+    result = await db.execute(
+        select(RobokassaPayment.inv_id).order_by(RobokassaPayment.id.desc()).limit(limit)
+    )
+    return [row[0] for row in result.all()]
+
+
 async def get_robokassa_payment_by_order_id(db: AsyncSession, order_id: str) -> RobokassaPayment | None:
     """Получить платёж по нашему order_id."""
     result = await db.execute(

@@ -97,7 +97,9 @@ async def _create_robokassa_payment_and_respond(
         )
 
     logger.info(
-        'Robokassa payment created: user amount=₽',
+        'Robokassa payment created: inv_id= user_db_id= amount_rub=',
+        inv_id=result.get('inv_id'),
+        user_db_id=db_user.id,
         telegram_id=db_user.telegram_id,
         amount_rub=amount_rub,
     )
