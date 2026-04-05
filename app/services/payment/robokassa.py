@@ -90,6 +90,10 @@ class RobokassaPaymentMixin:
             expires_at=expires_at,
         )
 
+        # Сразу фиксируем в БД: Result URL приходит в отдельной сессии FastAPI и не видит
+        # незакоммиченную строку, пока AuthMiddleware не сделает commit после хендлера.
+        await db.commit()
+
         logger.info(
             'Robokassa: создан платёж inv_id= order_id= user_id= amount=',
             inv_id=inv_id,
