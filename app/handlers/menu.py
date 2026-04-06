@@ -1076,16 +1076,12 @@ def _main_menu_cabinet_host_display() -> str:
     return url.replace('https://', '').replace('http://', '').split('/')[0]
 
 
-def _format_main_menu_base(
-    user: User,
-    texts,
-    subscription_status_inner: str,
-    *,
-    tariff_line: str = '',
-) -> str:
-    action_prompt = texts.t('MAIN_MENU_ACTION_PROMPT', 'Выберите действие:')
+def _format_main_menu_base(user: User, texts, subscription_status_inner: str) -> str:
     cabinet_host = _main_menu_cabinet_host_display() or texts.t('MAIN_MENU_CABINET_HOST_FALLBACK', '—')
-    telegram_id = user.telegram_id if getattr(user, 'telegram_id', None) is not None else '—'
+    raw_tid = getattr(user, 'telegram_id', None)
+    telegram_id = (
+        f'<code>{html.escape(str(raw_tid), quote=False)}</code>' if raw_tid is not None else '—'
+    )
     news_channel = texts.t('MAIN_MENU_NEWS_CHANNEL', '@ghostvless')
     return texts.MAIN_MENU.format(
         user_name=html.escape(user.full_name or ''),
@@ -1093,8 +1089,6 @@ def _format_main_menu_base(
         subscription_status=subscription_status_inner,
         cabinet_host=cabinet_host,
         news_channel=news_channel,
-        tariff_line=tariff_line,
-        action_prompt=action_prompt,
     )
 
 
@@ -1244,19 +1238,13 @@ async def get_main_menu_text(user, texts, db: AsyncSession):
 
     # Multi-tariff: show summary of all subscriptions
     if settings.is_multi_tariff_enabled():
-        subscriptions_status, tariff_info_block = await _get_multi_tariff_status(user, texts, db)
+        subscriptions_status, _ = await _get_multi_tariff_status(user, texts, db)
 
-        base_text = _format_main_menu_base(
-            user,
-            texts,
-            subscriptions_status,
-            tariff_line=tariff_info_block,
-        )
+        base_text = _format_main_menu_base(user, texts, subscriptions_status)
     else:
-        # Single-tariff mode: legacy behavior
+        # Single-tariff mode: legacy behavior (тариф подгружаем только для is_daily в статусе подписки)
         tariff = None
         is_daily_tariff = False
-        tariff_line = ''
 
         subscription = getattr(user, 'subscription', None)
         if settings.is_tariffs_mode() and subscription and subscription.tariff_id:
@@ -1266,7 +1254,6 @@ async def get_main_menu_text(user, texts, db: AsyncSession):
                 tariff = await get_tariff_by_id(db, subscription.tariff_id)
                 if tariff:
                     is_daily_tariff = getattr(tariff, 'is_daily', False)
-                    tariff_line = f'\n📦 Тариф: {html.escape(tariff.name)}'
             except Exception as e:
                 logger.debug('Не удалось загрузить тариф для главного меню', error=e)
 
@@ -1274,7 +1261,6 @@ async def get_main_menu_text(user, texts, db: AsyncSession):
             user,
             texts,
             _get_subscription_status(user, texts, is_daily_tariff),
-            tariff_line=tariff_line,
         )
 
     action_prompt = texts.t('MAIN_MENU_ACTION_PROMPT', 'Выберите действие:')

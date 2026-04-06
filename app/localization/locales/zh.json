@@ -1015,7 +1015,7 @@
 "LOADING": "⏳加载中...",
 "MAINTENANCE_MODE_ACTIVE": "\n🔧正在进行技术维护！\n\n服务暂时不可用。我们正在进行技术工作以提高服务质量。\n\n⏰预计完成时间：未知\n🔄请稍后再试\n\n对于暂时的不便，我们深表歉意。\n",
 "MAINTENANCE_MODE_API_ERROR": "\n🔧正在进行技术维护！\n\n由于连接服务器出现问题，服务暂时不可用。\n\n⏰我们正在努力恢复。请几分钟后再试。\n\n🔄最后检查时间：{last_check}\n",
-"MAIN_MENU": "<b>━━ 👾 您的资料 ━━</b>\n👤 <b>{user_name}</b>\n🆔 {telegram_id}\n\n<b>━━ 🌐 订阅 ━━</b>\n{subscription_status}\n\n🔗 个人中心：{cabinet_host}\n👻 新闻与更新：{news_channel}{tariff_line}\n\n{action_prompt}\n",
+"MAIN_MENU": "<b>━━ 👾 您的资料 ━━</b>\n👤 <b>{user_name}</b>\n🆔 {telegram_id}\n\n<b>━━ 🌐 订阅 ━━</b>\n{subscription_status}\n\n🔗 个人中心：{cabinet_host}\n👻 新闻与更新：{news_channel}\n",
 "MAIN_MENU_ACTION_PROMPT": "请选择操作：",
 "MAIN_MENU_CABINET_HOST_FALLBACK": "—",
 "MAIN_MENU_NEWS_CHANNEL": "@ghostvless",
