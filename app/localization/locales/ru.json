@@ -1099,7 +1099,7 @@
   "LOADING": "⏳ Загрузка...",
   "MAINTENANCE_MODE_ACTIVE": "\n🔧 Технические работы!\n\nСервис временно недоступен. Ведутся технические работы по улучшению качества обслуживания.\n\n⏰ Ориентировочное время завершения: неизвестно\n🔄 Попробуйте позже\n\nПриносим извинения за временные неудобства.\n",
   "MAINTENANCE_MODE_API_ERROR": "\n🔧 Технические работы!\n\nСервис временно недоступен из-за проблем с подключением к серверам.\n\n⏰ Мы работаем над восстановлением. Попробуйте через несколько минут.\n\n🔄 Последняя проверка: {last_check}\n",
-  "MAIN_MENU": "<b>━━ 👾 Ваш профиль ━━</b>\n👤 <b>{user_name}</b>\n🆔 {telegram_id}\n\n<b>━━ 🌐 Подписка ━━</b>\n{subscription_status}\n\n🔗 Личный кабинет: {cabinet_host}\n👻 Новости и обновления: {news_channel}\n\n{action_prompt}\n",
+  "MAIN_MENU": "<b>━━ 👾 Ваш профиль ━━</b>\n👤 <b>{user_name}</b>\n🆔 {telegram_id}\n\n<b>━━ 🌐 Подписка ━━</b>\n{subscription_status}\n\n🔗 Личный кабинет: {cabinet_host}\n👻 Новости и обновления: {news_channel}{tariff_line}\n\n{action_prompt}\n",
   "MAIN_MENU_ACTION_PROMPT": "Выберите действие:",
   "MAIN_MENU_CABINET_HOST_FALLBACK": "—",
   "MAIN_MENU_NEWS_CHANNEL": "@ghostvless",

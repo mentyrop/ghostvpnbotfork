@@ -1078,7 +1078,7 @@
   "LOADING": "⏳ Loading...",
   "MAINTENANCE_MODE_ACTIVE": "\n🔧 Maintenance in progress!\n\nThe service is temporarily unavailable while we improve performance.\n\n⏰ Estimated completion time: unknown\n🔄 Please try again later\n\nWe apologize for the inconvenience.\n",
   "MAINTENANCE_MODE_API_ERROR": "\n🔧 Maintenance in progress!\n\nThe service is temporarily unavailable due to connection issues with the servers.\n\n⏰ We're working on it. Please try again in a few minutes.\n\n🔄 Last check: {last_check}\n",
-  "MAIN_MENU": "<b>━━ 👾 Your profile ━━</b>\n👤 <b>{user_name}</b>\n🆔 {telegram_id}\n\n<b>━━ 🌐 Subscription ━━</b>\n{subscription_status}\n\n🔗 Personal cabinet: {cabinet_host}\n👻 News and updates: {news_channel}\n\n{action_prompt}\n",
+  "MAIN_MENU": "<b>━━ 👾 Your profile ━━</b>\n👤 <b>{user_name}</b>\n🆔 {telegram_id}\n\n<b>━━ 🌐 Subscription ━━</b>\n{subscription_status}\n\n🔗 Personal cabinet: {cabinet_host}\n👻 News and updates: {news_channel}{tariff_line}\n\n{action_prompt}\n",
   "MAIN_MENU_ACTION_PROMPT": "Choose an option:",
   "MAIN_MENU_CABINET_HOST_FALLBACK": "—",
   "MAIN_MENU_NEWS_CHANNEL": "@ghostvless",

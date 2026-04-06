@@ -1099,7 +1099,7 @@
     "LOADING": "⏳ بارگذاری...",
     "MAINTENANCE_MODE_ACTIVE": "\n🔧 تعمیرات فنی!\n\nسرویس موقتاً در دسترس نیست. در حال بهبود کیفیت خدمات هستیم.\n\n⏰ زمان تقریبی اتمام: نامشخص\n🔄 بعداً تلاش کنید\n\nبابت ناراحتی عذرخواهی می‌کنیم.\n",
     "MAINTENANCE_MODE_API_ERROR": "\n🔧 تعمیرات فنی!\n\nسرویس به دلیل مشکل اتصال به سرورها موقتاً در دسترس نیست.\n\n⏰ در حال رفع مشکل هستیم. چند دقیقه بعد تلاش کنید.\n\n🔄 آخرین بررسی: {last_check}\n",
-    "MAIN_MENU": "<b>━━ 👾 پروفایل شما ━━</b>\n👤 <b>{user_name}</b>\n🆔 {telegram_id}\n\n<b>━━ 🌐 اشتراک ━━</b>\n{subscription_status}\n\n🔗 کابینه شخصی: {cabinet_host}\n👻 اخبار و به‌روزرسانی‌ها: {news_channel}\n\n{action_prompt}\n",
+    "MAIN_MENU": "<b>━━ 👾 پروفایل شما ━━</b>\n👤 <b>{user_name}</b>\n🆔 {telegram_id}\n\n<b>━━ 🌐 اشتراک ━━</b>\n{subscription_status}\n\n🔗 کابینه شخصی: {cabinet_host}\n👻 اخبار و به‌روزرسانی‌ها: {news_channel}{tariff_line}\n\n{action_prompt}\n",
     "MAIN_MENU_ACTION_PROMPT": "عملیات را انتخاب کنید:",
     "MAIN_MENU_CABINET_HOST_FALLBACK": "—",
     "MAIN_MENU_NEWS_CHANNEL": "@ghostvless",
