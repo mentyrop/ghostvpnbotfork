@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime
 
 import structlog
@@ -373,7 +374,7 @@ def _build_cabinet_main_menu_keyboard(
     and how many fit per keyboard row (``max_per_row``).
     """
     from app.utils.button_styles_cache import CALLBACK_TO_SECTION, get_cached_button_styles
-    from app.utils.menu_layout_cache import get_cached_menu_layout
+    from app.utils.menu_layout_cache import MINIMAL_CABINET_MAIN_MENU_LAYOUT, get_cached_menu_layout
     from app.utils.miniapp_buttons import (
         CALLBACK_TO_CABINET_STYLE,
         _resolve_style,
@@ -382,7 +383,11 @@ def _build_cabinet_main_menu_keyboard(
 
     global_style = _resolve_style((settings.CABINET_BUTTON_STYLE or '').strip())
     cached_styles = get_cached_button_styles()
-    layout = get_cached_menu_layout()
+    layout = (
+        json.loads(json.dumps(MINIMAL_CABINET_MAIN_MENU_LAYOUT))
+        if settings.CABINET_MAIN_MENU_MINIMAL
+        else get_cached_menu_layout()
+    )
     custom_buttons_cfg: dict[str, dict] = layout.get('custom_buttons', {})
 
     def _cabinet_button(

@@ -612,6 +612,8 @@ class Settings(BaseSettings):
     SEVERPAY_LIFETIME: int = 1440  # minutes, 30-4320
 
     MAIN_MENU_MODE: str = 'default'  # 'default' | 'cabinet'
+    # При MAIN_MENU_MODE=cabinet: True — только кабинет, баланс, поддержка, язык (+ админ при правах), игнорируя раскладку из БД
+    CABINET_MAIN_MENU_MINIMAL: bool = True
     # Стиль кнопок Cabinet: primary (синий), success (зелёный), danger (красный), '' (по умолчанию для каждой секции)
     CABINET_BUTTON_STYLE: str = ''
     CONNECT_BUTTON_MODE: str = 'miniapp_subscription'
