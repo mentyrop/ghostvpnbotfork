@@ -1,6 +1,7 @@
 import html
 from datetime import UTC, datetime
 from decimal import Decimal
+from urllib.parse import urlparse
 
 import structlog
 from aiogram import Dispatcher, F, types
@@ -1065,10 +1066,35 @@ async def handle_back_to_menu(callback: types.CallbackQuery, state: FSMContext, 
     await callback.answer()
 
 
+def _main_menu_cabinet_host_display() -> str:
+    url = settings._normalized_cabinet_url()
+    if not url:
+        return ''
+    netloc = urlparse(url).netloc
+    if netloc:
+        return netloc
+    return url.replace('https://', '').replace('http://', '').split('/')[0]
+
+
+def _format_main_menu_base(user: User, texts, subscription_status_inner: str) -> str:
+    action_prompt = texts.t('MAIN_MENU_ACTION_PROMPT', 'Выберите действие:')
+    cabinet_host = _main_menu_cabinet_host_display() or texts.t('MAIN_MENU_CABINET_HOST_FALLBACK', '—')
+    telegram_id = user.telegram_id if getattr(user, 'telegram_id', None) is not None else '—'
+    news_channel = texts.t('MAIN_MENU_NEWS_CHANNEL', '@ghostvless')
+    return texts.MAIN_MENU.format(
+        user_name=html.escape(user.full_name or ''),
+        telegram_id=telegram_id,
+        subscription_status=subscription_status_inner,
+        cabinet_host=cabinet_host,
+        news_channel=news_channel,
+        action_prompt=action_prompt,
+    )
+
+
 def _get_subscription_status(user: User, texts, is_daily_tariff: bool = False) -> str:
     subscription = getattr(user, 'subscription', None)
     if not subscription:
-        return texts.t('SUB_STATUS_NONE', '❌ Отсутствует')
+        return texts.t('SUB_STATUS_NONE', '❌ Нет активной подписки')
 
     current_time = datetime.now(UTC)
     actual_status = (subscription.actual_status or '').lower()
@@ -1120,12 +1146,12 @@ def _get_subscription_status(user: User, texts, is_daily_tariff: bool = False) -
     if actual_status == 'active':
         # Для суточных тарифов не показываем предупреждение об истечении
         if is_daily_tariff:
-            return texts.t('SUB_STATUS_DAILY_ACTIVE', '💎 Активна')
+            return texts.t('SUB_STATUS_DAILY_ACTIVE', '✅ Активна')
 
         if days_left > 7 and end_date_text:
             return texts.t(
                 'SUB_STATUS_ACTIVE_LONG',
-                '💎 Активна\n📅 до {end_date} ({days} дн.)',
+                '✅ Активна\n📅 до {end_date} ({days} дн.)',
             ).format(
                 end_date=end_date_text,
                 days=days_left,
@@ -1133,16 +1159,16 @@ def _get_subscription_status(user: User, texts, is_daily_tariff: bool = False) -
         if days_left > 1:
             return texts.t(
                 'SUB_STATUS_ACTIVE_FEW_DAYS',
-                '💎 Активна\n⚠️ истекает через {days} дн.',
+                '✅ Активна\n⚠️ истекает через {days} дн.',
             ).format(days=days_left)
         if days_left == 1:
             return texts.t(
                 'SUB_STATUS_ACTIVE_TOMORROW',
-                '💎 Активна\n⚠️ истекает завтра!',
+                '✅ Активна\n⚠️ истекает завтра!',
             )
         return texts.t(
             'SUB_STATUS_ACTIVE_TODAY',
-            '💎 Активна\n⚠️ истекает сегодня!',
+            '✅ Активна\n⚠️ истекает сегодня!',
         )
 
     return texts.t('SUB_STATUS_UNKNOWN', '❓ Неизвестно')
@@ -1172,7 +1198,7 @@ async def _get_multi_tariff_status(user, texts, db: AsyncSession) -> tuple[str, 
     subscriptions = await get_all_subscriptions_by_user_id(db, user.id)
 
     if not subscriptions:
-        return texts.t('SUB_STATUS_NONE', '❌ Отсутствует'), ''
+        return texts.t('SUB_STATUS_NONE', '❌ Нет активной подписки'), ''
 
     current_time = datetime.now(UTC)
     lines: list[str] = []
@@ -1213,10 +1239,7 @@ async def get_main_menu_text(user, texts, db: AsyncSession):
     if settings.is_multi_tariff_enabled():
         subscriptions_status, tariff_info_block = await _get_multi_tariff_status(user, texts, db)
 
-        base_text = texts.MAIN_MENU.format(
-            user_name=html.escape(user.full_name or ''),
-            subscription_status=subscriptions_status,
-        )
+        base_text = _format_main_menu_base(user, texts, subscriptions_status)
 
         if tariff_info_block:
             action_prompt_text = texts.t('MAIN_MENU_ACTION_PROMPT', 'Выберите действие:')
@@ -1240,9 +1263,10 @@ async def get_main_menu_text(user, texts, db: AsyncSession):
             except Exception as e:
                 logger.debug('Не удалось загрузить тариф для главного меню', error=e)
 
-        base_text = texts.MAIN_MENU.format(
-            user_name=html.escape(user.full_name or ''),
-            subscription_status=_get_subscription_status(user, texts, is_daily_tariff),
+        base_text = _format_main_menu_base(
+            user,
+            texts,
+            _get_subscription_status(user, texts, is_daily_tariff),
         )
 
         if tariff_info_block:
