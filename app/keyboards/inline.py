@@ -389,6 +389,7 @@ def _build_cabinet_main_menu_keyboard(
         else get_cached_menu_layout()
     )
     custom_buttons_cfg: dict[str, dict] = layout.get('custom_buttons', {})
+    minimal_menu = settings.CABINET_MAIN_MENU_MINIMAL
 
     def _cabinet_button(
         text: str,
@@ -397,14 +398,18 @@ def _build_cabinet_main_menu_keyboard(
         *,
         style: str | None = None,
         icon_custom_emoji_id: str | None = None,
+        neutral: bool = False,
     ) -> InlineKeyboardButton:
         url = build_cabinet_url(path)
         if url:
             section = CALLBACK_TO_SECTION.get(callback_fallback)
             section_cfg = cached_styles.get(section or '', {}) if section else {}
 
+            # neutral=True — стандартный вид кнопки (без primary/success из конфига)
+            if neutral:
+                resolved = None
             # 'default' in per-section config means "no color" — do not fall through.
-            if style:
+            elif style:
                 resolved = _resolve_style(style)
             elif section_cfg.get('style'):
                 resolved = _resolve_style(section_cfg['style'])
@@ -471,9 +476,16 @@ def _build_cabinet_main_menu_keyboard(
                     if not section_cfg.get('enabled', True):
                         continue
                     home_text = section_cfg.get('labels', {}).get(language, '') or texts.t(
-                        'MENU_PROFILE', '👤 Личный кабинет'
+                        'MENU_PROFILE', '👾 Личный кабинет'
                     )
-                    row_buttons.append(_cabinet_button(home_text, '/', 'menu_profile_unavailable'))
+                    row_buttons.append(
+                        _cabinet_button(
+                            home_text,
+                            '/',
+                            'menu_profile_unavailable',
+                            style='primary' if minimal_menu else None,
+                        )
+                    )
 
                 case 'subscription':
                     if not section_cfg.get('enabled', True):
@@ -490,7 +502,14 @@ def _build_cabinet_main_menu_keyboard(
                     if not section_cfg.get('enabled', True):
                         continue
                     balance_text = _get_balance_text(cached_styles, language, texts, balance_kopeks)
-                    row_buttons.append(_cabinet_button(balance_text, '/balance', 'menu_balance'))
+                    row_buttons.append(
+                        _cabinet_button(
+                            balance_text,
+                            '/balance',
+                            'menu_balance',
+                            neutral=minimal_menu,
+                        )
+                    )
 
                 case 'referral':
                     if not settings.is_referral_program_enabled():
@@ -506,7 +525,9 @@ def _build_cabinet_main_menu_keyboard(
                     if not section_cfg.get('enabled', True):
                         continue
                     sup_text = section_cfg.get('labels', {}).get(language, '') or texts.MENU_SUPPORT
-                    row_buttons.append(_cabinet_button(sup_text, '/support', 'menu_support'))
+                    row_buttons.append(
+                        _cabinet_button(sup_text, '/support', 'menu_support', neutral=minimal_menu)
+                    )
 
                 case 'info':
                     if not section_cfg.get('enabled', True):

@@ -33,12 +33,13 @@ VALID_MAX_PER_ROW = frozenset({1, 2, 3})
 # Valid Telegram Bot API style values for custom buttons.
 VALID_CUSTOM_BUTTON_STYLES = frozenset({'primary', 'success', 'danger', 'default'})
 
-# Кабинет: личный кабинет, баланс + поддержка, язык; админ — отдельной строкой для is_admin.
+# Кабинет: по одной кнопке в ряд; админ — отдельной строкой для is_admin.
 MINIMAL_CABINET_MAIN_MENU_LAYOUT: dict[str, object] = {
     'row_1': {'id': 'row_1', 'buttons': ['home'], 'max_per_row': 1},
-    'row_2': {'id': 'row_2', 'buttons': ['balance', 'support'], 'max_per_row': 2},
-    'row_3': {'id': 'row_3', 'buttons': ['language'], 'max_per_row': 1},
-    'row_4': {'id': 'row_4', 'buttons': ['admin'], 'max_per_row': 1},
+    'row_2': {'id': 'row_2', 'buttons': ['balance'], 'max_per_row': 1},
+    'row_3': {'id': 'row_3', 'buttons': ['support'], 'max_per_row': 1},
+    'row_4': {'id': 'row_4', 'buttons': ['language'], 'max_per_row': 1},
+    'row_5': {'id': 'row_5', 'buttons': ['admin'], 'max_per_row': 1},
     'custom_buttons': {},
 }
 
