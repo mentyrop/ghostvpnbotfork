@@ -99,3 +99,9 @@ data/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Cabinet
+bedolaga-cabinet/.env
+bedolaga-cabinet/node_modules/
+bedolaga-cabinet/dist/
+bedolaga-cabinet/cabinet-dist/
