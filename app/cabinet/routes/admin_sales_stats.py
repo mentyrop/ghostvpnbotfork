@@ -1079,7 +1079,8 @@ async def get_deposits_stats(
 
         methods_with_manual = [*REAL_PAYMENT_METHODS, PaymentMethod.MANUAL.value]
         base_filter = and_(
-            Transaction.type.in_([TransactionType.DEPOSIT.value, TransactionType.SUBSCRIPTION_PAYMENT.value]),
+            # "Deposits" tab should show only balance top-ups.
+            Transaction.type == TransactionType.DEPOSIT.value,
             Transaction.is_completed == True,
             Transaction.payment_method.in_(methods_with_manual),
             Transaction.created_at >= period_start,
