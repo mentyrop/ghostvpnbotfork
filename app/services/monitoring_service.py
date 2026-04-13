@@ -2079,16 +2079,17 @@ class MonitoringService:
             from app.database.models import Subscription, User
             from app.utils.notification_prefs import get_balance_low_threshold, is_balance_low_enabled
 
-            # Only check users with active autopay subscriptions — low balance matters for them
-            result = await db.execute(
-                select(User)
-                .join(Subscription, Subscription.user_id == User.id)
+            # Only users with active autopay subscriptions — use subquery so we never DISTINCT on JSON columns
+            autopay_user_ids = (
+                select(Subscription.user_id)
                 .where(
                     Subscription.status.in_(['active', 'trial']),
                     Subscription.autopay_enabled.is_(True),
-                    User.telegram_id.isnot(None),
                 )
                 .distinct()
+            )
+            result = await db.execute(
+                select(User).where(User.id.in_(autopay_user_ids), User.telegram_id.isnot(None))
             )
             users = result.scalars().all()
 
