@@ -645,7 +645,7 @@ class Settings(BaseSettings):
     SKIP_REFERRAL_CODE: bool = False
 
     DEFAULT_LANGUAGE: str = 'ru'
-    AVAILABLE_LANGUAGES: str = 'ru,en,ua,zh,fa'
+    AVAILABLE_LANGUAGES: str = 'ru,en'
     LANGUAGE_SELECTION_ENABLED: bool = True
 
     # Округление цен при отображении (≤50 коп вниз, >50 коп вверх)
@@ -1345,7 +1345,7 @@ class Settings(BaseSettings):
         return bool(value)
 
     def get_available_languages(self) -> list[str]:
-        defaults = ['ru', 'en', 'ua', 'zh', 'fa']
+        defaults = ['ru', 'en']
 
         try:
             langs = self.AVAILABLE_LANGUAGES
