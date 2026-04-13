@@ -1,9 +1,10 @@
 """alter notification_settings from json to jsonb
 
-Revision ID: 0057
-Revises: 0056
+Revision ID: 0059
+Revises: 0058
 Create Date: 2026-04-13
 
+(Fork: was upstream 0057; renumbered after 0058 cabinet_refresh_tokens.)
 """
 
 from typing import Sequence, Union
@@ -11,8 +12,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = '0057'
-down_revision: Union[str, None] = '0056'
+revision: str = '0059'
+down_revision: Union[str, None] = '0058'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

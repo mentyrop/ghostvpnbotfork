@@ -1,9 +1,10 @@
 """create cabinet_refresh_tokens table
 
-Revision ID: 0056
-Revises: 0055
+Revision ID: 0058
+Revises: 0057
 Create Date: 2026-04-13
 
+(Fork: chained after 0057 pending_campaign_slug; upstream used 0056/0057 ids — renumbered to avoid duplicate heads.)
 """
 
 from typing import Sequence, Union
@@ -11,8 +12,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = '0056'
-down_revision: Union[str, None] = '0055'
+revision: str = '0058'
+down_revision: Union[str, None] = '0057'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
