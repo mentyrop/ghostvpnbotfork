@@ -1,10 +1,10 @@
 """alter notification_settings from json to jsonb
 
-Revision ID: 0059
-Revises: 0058
+Revision ID: 0061
+Revises: 0060
 Create Date: 2026-04-13
 
-(Fork: was upstream 0057; renumbered after 0058 cabinet_refresh_tokens.)
+(Fork: moved to 0061 to avoid duplicate 0059 with upstream RollyPay migration.)
 """
 
 from typing import Sequence, Union
@@ -12,8 +12,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = '0059'
-down_revision: Union[str, None] = '0058'
+revision: str = '0061'
+down_revision: Union[str, None] = '0060'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
