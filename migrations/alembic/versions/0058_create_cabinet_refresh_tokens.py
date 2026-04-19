@@ -1,10 +1,10 @@
 """create cabinet_refresh_tokens table
 
-Revision ID: 0060
-Revises: 0059
+Revision ID: 0062
+Revises: 0060
 Create Date: 2026-04-13
 
-(Fork: moved to 0060 to avoid duplicate 0058 with upstream PayPear migration.)
+(Fork: moved to 0062 to avoid duplicate 0060 with upstream AuraPay migration.)
 """
 
 from typing import Sequence, Union
@@ -12,8 +12,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = '0060'
-down_revision: Union[str, None] = '0059'
+revision: str = '0062'
+down_revision: Union[str, None] = '0060'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
