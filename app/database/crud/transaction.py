@@ -1,3 +1,4 @@
+from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
 import structlog
@@ -6,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database.models import PaymentMethod, Transaction, TransactionType, User
+from app.utils.timezone import get_local_timezone
 
 
 logger = structlog.get_logger(__name__)
@@ -28,7 +30,25 @@ REAL_PAYMENT_METHODS = [
     PaymentMethod.RIOPAY.value,
     PaymentMethod.SEVERPAY.value,
     PaymentMethod.ROBOKASSA.value,
+    PaymentMethod.PAYPEAR.value,
+    PaymentMethod.ROLLYPAY.value,
+    PaymentMethod.AURAPAY.value,
 ]
+
+
+def _local_day_start_utc(reference_utc: datetime | None = None) -> datetime:
+    """Return local day start converted to UTC."""
+    now_utc = reference_utc or datetime.now(UTC)
+    local_now = now_utc.astimezone(get_local_timezone())
+    return local_now.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(UTC)
+
+
+def _local_month_start_utc(reference_utc: datetime | None = None) -> datetime:
+    """Return local month start converted to UTC."""
+    now_utc = reference_utc or datetime.now(UTC)
+    local_now = now_utc.astimezone(get_local_timezone())
+    local_month_start = local_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    return local_month_start.astimezone(UTC)
 
 
 async def create_transaction(
@@ -285,7 +305,7 @@ async def get_transactions_statistics(
     db: AsyncSession, start_date: datetime | None = None, end_date: datetime | None = None
 ) -> dict:
     if not start_date:
-        start_date = datetime.now(UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        start_date = _local_month_start_utc()
     if not end_date:
         end_date = datetime.now(UTC)
 
@@ -366,10 +386,10 @@ async def get_transactions_statistics(
         row.payment_method: {'count': row.count, 'amount': row.total_amount} for row in payment_methods_result
     }
 
-    today = datetime.now(UTC).date()
+    today_start_utc = _local_day_start_utc(end_date)
     today_result = await db.execute(
         select(func.count(Transaction.id)).where(
-            and_(Transaction.is_completed == True, Transaction.created_at >= today)
+            and_(Transaction.is_completed == True, Transaction.created_at >= today_start_utc)
         )
     )
     transactions_today = today_result.scalar()
@@ -380,7 +400,7 @@ async def get_transactions_statistics(
             and_(
                 Transaction.type.in_([TransactionType.DEPOSIT.value, TransactionType.SUBSCRIPTION_PAYMENT.value]),
                 Transaction.is_completed == True,
-                Transaction.created_at >= today,
+                Transaction.created_at >= today_start_utc,
                 Transaction.payment_method.in_(REAL_PAYMENT_METHODS),
             )
         )
@@ -403,26 +423,45 @@ async def get_transactions_statistics(
 
 async def get_revenue_by_period(db: AsyncSession, days: int = 30) -> list[dict]:
     """Доход по дням — реальные платежи + прямые покупки подписок (лендинги)."""
-    start_date = datetime.now(UTC) - timedelta(days=days)
+    local_tz = get_local_timezone()
+    now_utc = datetime.now(UTC)
+    local_now = now_utc.astimezone(local_tz)
+    safe_days = max(days, 1)
+    local_start = (local_now - timedelta(days=safe_days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    start_date_utc = local_start.astimezone(UTC)
 
     result = await db.execute(
         select(
-            func.date(Transaction.created_at).label('date'),
-            func.coalesce(func.sum(func.abs(Transaction.amount_kopeks)), 0).label('amount'),
+            Transaction.created_at,
+            func.abs(Transaction.amount_kopeks).label('amount'),
         )
         .where(
             and_(
                 Transaction.type.in_([TransactionType.DEPOSIT.value, TransactionType.SUBSCRIPTION_PAYMENT.value]),
                 Transaction.is_completed == True,
-                Transaction.created_at >= start_date,
+                Transaction.created_at >= start_date_utc,
                 Transaction.payment_method.in_(REAL_PAYMENT_METHODS),
             )
         )
-        .group_by(func.date(Transaction.created_at))
-        .order_by(func.date(Transaction.created_at))
+        .order_by(Transaction.created_at.asc())
     )
 
-    return [{'date': row.date, 'amount_kopeks': row.amount} for row in result]
+    daily_totals: dict[str, int] = defaultdict(int)
+    for row in result:
+        created_at = row.created_at
+        if created_at is None:
+            continue
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=UTC)
+        local_date = created_at.astimezone(local_tz).date().isoformat()
+        daily_totals[local_date] += int(row.amount or 0)
+
+    chart: list[dict] = []
+    for day_index in range(safe_days):
+        date_key = (local_start + timedelta(days=day_index)).date().isoformat()
+        chart.append({'date': date_key, 'amount_kopeks': daily_totals.get(date_key, 0)})
+
+    return chart
 
 
 async def find_tribute_transactions_by_payment_id(

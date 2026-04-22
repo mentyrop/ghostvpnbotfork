@@ -26,6 +26,7 @@ from app.database.models import (
 )
 from app.services.remnawave_service import RemnaWaveService
 from app.services.version_service import version_service
+from app.utils.timezone import get_local_timezone
 
 from ..dependencies import get_cabinet_db, require_permission
 
@@ -35,6 +36,24 @@ logger = structlog.get_logger(__name__)
 _start_time = time.time()
 
 router = APIRouter(prefix='/admin/stats', tags=['Cabinet Admin Stats'])
+
+
+def _get_local_period_boundaries(reference_utc: datetime | None = None) -> dict[str, datetime]:
+    """Get UTC boundaries based on configured local timezone."""
+    now_utc = reference_utc or datetime.now(UTC)
+    local_now = now_utc.astimezone(get_local_timezone())
+
+    today_start_local = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    month_start_local = local_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    return {
+        'now_utc': now_utc,
+        'today_start_utc': today_start_local.astimezone(UTC),
+        'week_ago_utc': (local_now - timedelta(days=7)).astimezone(UTC),
+        'month_ago_utc': (local_now - timedelta(days=30)).astimezone(UTC),
+        'month_start_utc': month_start_local.astimezone(UTC),
+        'today_local_date': local_now.date(),
+    }
 
 
 # ============ Schemas ============
@@ -255,12 +274,13 @@ async def get_dashboard_stats(
         sub_stats = await get_subscriptions_statistics(db)
 
         # Get financial statistics
-        now = datetime.now(UTC)
-        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        boundaries = _get_local_period_boundaries()
+        now_utc = boundaries['now_utc']
+        month_start_utc = boundaries['month_start_utc']
 
-        trans_stats = await get_transactions_statistics(db, month_start, now)
+        trans_stats = await get_transactions_statistics(db, month_start_utc, now_utc)
         all_time_stats = await get_transactions_statistics(
-            db, start_date=datetime(2020, 1, 1, tzinfo=UTC), end_date=now
+            db, start_date=datetime(2020, 1, 1, tzinfo=UTC), end_date=now_utc
         )
 
         # Get revenue chart data (last 30 days)
@@ -273,7 +293,7 @@ async def get_dashboard_stats(
         tariff_stats = await _get_tariff_stats(db)
 
         # Derive income_today from revenue_chart to ensure consistency with chart
-        today_str = now.date().isoformat()
+        today_str = boundaries['today_local_date'].isoformat()
         income_today_from_chart = sum(
             item.get('amount_kopeks', 0) for item in revenue_data if str(item.get('date', '')) == today_str
         )
@@ -508,10 +528,10 @@ async def _get_tariff_stats(db: AsyncSession) -> TariffStats | None:
             logger.info('📊 Нет тарифов в системе, пропускаем статистику')
             return None
 
-        now = datetime.now(UTC)
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        week_ago = now - timedelta(days=7)
-        month_ago = now - timedelta(days=30)
+        boundaries = _get_local_period_boundaries()
+        today_start = boundaries['today_start_utc']
+        week_ago = boundaries['week_ago_utc']
+        month_ago = boundaries['month_ago_utc']
 
         tariff_items = []
         total_tariff_subscriptions = 0
@@ -606,10 +626,10 @@ async def get_top_referrers(
 ):
     """Get top referrers with earnings breakdown by period."""
     try:
-        now = datetime.now(UTC)
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        week_ago = now - timedelta(days=7)
-        month_ago = now - timedelta(days=30)
+        boundaries = _get_local_period_boundaries()
+        today_start = boundaries['today_start_utc']
+        week_ago = boundaries['week_ago_utc']
+        month_ago = boundaries['month_ago_utc']
 
         # Get all referrers with their stats
         referrers_query = await db.execute(
@@ -832,9 +852,9 @@ async def get_recent_payments(
 ):
     """Get recent payments with user info."""
     try:
-        now = datetime.now(UTC)
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        week_ago = now - timedelta(days=7)
+        boundaries = _get_local_period_boundaries()
+        today_start = boundaries['today_start_utc']
+        week_ago = boundaries['week_ago_utc']
 
         # Get recent transactions (deposits and subscription payments)
         transactions_query = await db.execute(
