@@ -78,6 +78,7 @@ SUPPORTED_MANUAL_CHECK_METHODS: frozenset[PaymentMethod] = frozenset(
         PaymentMethod.RIOPAY,
         PaymentMethod.SEVERPAY,
         PaymentMethod.ROBOKASSA,
+        PaymentMethod.OVERPAY,
     }
 )
 
@@ -100,6 +101,7 @@ SUPPORTED_AUTO_CHECK_METHODS: frozenset[PaymentMethod] = frozenset(
         PaymentMethod.SEVERPAY,
         # OpStateExt (боевой режим), если Result URL не дошёл
         PaymentMethod.ROBOKASSA,
+        PaymentMethod.OVERPAY,
     }
 )
 
@@ -131,6 +133,8 @@ def method_display_name(method: PaymentMethod) -> str:
         return settings.get_severpay_display_name()
     if method == PaymentMethod.ROBOKASSA:
         return settings.get_robokassa_display_name()
+    if method == PaymentMethod.OVERPAY:
+        return settings.get_overpay_display_name()
     if method == PaymentMethod.TELEGRAM_STARS:
         return 'Telegram Stars'
     return method.value
@@ -163,6 +167,8 @@ def _method_is_enabled(method: PaymentMethod) -> bool:
         return settings.is_severpay_enabled()
     if method == PaymentMethod.ROBOKASSA:
         return settings.is_robokassa_enabled()
+    if method == PaymentMethod.OVERPAY:
+        return settings.is_overpay_enabled()
     return False
 
 

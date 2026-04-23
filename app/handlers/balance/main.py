@@ -170,6 +170,13 @@ async def route_payment_by_method(
             await process_rollypay_payment_amount(message, db_user, db, amount_kopeks, state)
         return True
 
+    if payment_method == 'overpay':
+        from .overpay import process_overpay_payment_amount
+
+        async with AsyncSessionLocal() as db:
+            await process_overpay_payment_amount(message, db_user, db, amount_kopeks, state)
+        return True
+
     if payment_method == 'aurapay':
         from .aurapay import process_aurapay_payment_amount
 
@@ -775,6 +782,10 @@ def register_balance_handlers(dp: Dispatcher):
 
     dp.callback_query.register(start_robokassa_topup, F.data == 'topup_robokassa')
     dp.callback_query.register(process_robokassa_quick_amount, F.data.startswith('topup_amount|robokassa|'))
+
+    from .overpay import start_overpay_topup
+
+    dp.callback_query.register(start_overpay_topup, F.data == 'topup_overpay')
     from .aurapay import start_aurapay_topup
 
     dp.callback_query.register(start_aurapay_topup, F.data == 'topup_aurapay')
