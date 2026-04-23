@@ -659,15 +659,6 @@ async def _search_robokassa(db: AsyncSession, params: SearchParams) -> list[Pend
     )
     stmt = _apply_date_filter(stmt, RobokassaPayment.created_at, params.cutoff, params.upper_bound)
 
-
-async def _search_robokassa(db: AsyncSession, params: SearchParams) -> list[PendingPayment]:
-    stmt = (
-        select(RobokassaPayment)
-        .options(selectinload(RobokassaPayment.user))
-        .order_by(desc(RobokassaPayment.created_at))
-    )
-    stmt = _apply_date_filter(stmt, RobokassaPayment.created_at, params.cutoff, params.upper_bound)
-
     if params.search:
         kind = _detect_user_search_kind(params.search)
         if kind == _UserSearchKind.INVOICE:
