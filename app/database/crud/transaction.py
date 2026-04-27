@@ -33,6 +33,7 @@ REAL_PAYMENT_METHODS = [
     PaymentMethod.PAYPEAR.value,
     PaymentMethod.ROLLYPAY.value,
     PaymentMethod.AURAPAY.value,
+    PaymentMethod.OVERPAY.value,
 ]
 
 
