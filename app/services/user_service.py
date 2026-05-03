@@ -25,6 +25,7 @@ from app.database.crud.user import (
     update_user,
 )
 from app.database.models import (
+    AuraPayPayment,
     AdvertisingCampaign,
     AdvertisingCampaignRegistration,
     BroadcastHistory,
@@ -34,13 +35,19 @@ from app.database.models import (
     HeleketPayment,
     KassaAiPayment,
     MulenPayPayment,
+    OverpayPayment,
     Pal24Payment,
+    PayPearPayment,
     PaymentMethod,
     PlategaPayment,
     PromoCode,
     PromoCodeUse,
     PromoGroup,
     ReferralEarning,
+    RioPayPayment,
+    RobokassaPayment,
+    RollyPayPayment,
+    SeverPayPayment,
     SentNotification,
     Subscription,
     SubscriptionConversion,
@@ -1153,6 +1160,35 @@ class UserService:
                         await db.flush()
             except Exception as e:
                 logger.error('❌ Ошибка удаления KassaAi платежей', error=e)
+
+            # Удаляем/отвязываем остальные платежи, ссылающиеся на transactions.id
+            # (важно для корректного DELETE FROM transactions без FK-ошибок)
+            try:
+                async with db.begin_nested():
+                    transaction_ids_subquery = select(Transaction.id).where(Transaction.user_id == user_id)
+                    fk_payment_models: list[tuple[type, str]] = [
+                        (RioPayPayment, 'RioPay'),
+                        (SeverPayPayment, 'SeverPay'),
+                        (RobokassaPayment, 'Robokassa'),
+                        (PayPearPayment, 'PayPear'),
+                        (RollyPayPayment, 'RollyPay'),
+                        (OverpayPayment, 'Overpay'),
+                        (AuraPayPayment, 'AuraPay'),
+                    ]
+
+                    for model, model_name in fk_payment_models:
+                        await db.execute(
+                            update(model)
+                            .where(model.transaction_id.in_(transaction_ids_subquery))
+                            .values(transaction_id=None)
+                        )
+                        delete_result = await db.execute(delete(model).where(model.user_id == user_id))
+                        deleted_count = delete_result.rowcount or 0
+                        if deleted_count > 0:
+                            logger.info('🔄 Удаляем платежей', payment_model=model_name, payments_count=deleted_count)
+                    await db.flush()
+            except Exception as e:
+                logger.error('❌ Ошибка удаления платежей с FK на transactions', error=e)
 
             try:
                 async with db.begin_nested():
