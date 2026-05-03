@@ -4,7 +4,7 @@ from typing import Any
 
 import structlog
 from aiogram import Bot, types
-from sqlalchemy import delete, exists, func, select, update
+from sqlalchemy import delete, exists, func, inspect, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -802,6 +802,19 @@ class UserService:
         при полном удалении через кабинет администратора.
         """
         result = DeleteUserResult()
+        existing_tables: set[str] | None = None
+
+        async def _table_exists(model: type) -> bool:
+            """Return True when model table exists in current DB schema."""
+            nonlocal existing_tables
+            table_name = getattr(model, '__tablename__', None)
+            if not table_name:
+                return True
+            if existing_tables is None:
+                conn = await db.connection()
+                existing_tables = await conn.run_sync(lambda sync_conn: set(inspect(sync_conn).get_table_names()))
+            return table_name in existing_tables
+
         try:
             user = await get_user_by_id(db, user_id)
             if not user:
@@ -1177,6 +1190,13 @@ class UserService:
                     ]
 
                     for model, model_name in fk_payment_models:
+                        if not await _table_exists(model):
+                            logger.info(
+                                '⏭️ Пропускаем очистку платежей: таблица отсутствует',
+                                payment_model=model_name,
+                                table_name=getattr(model, '__tablename__', '<unknown>'),
+                            )
+                            continue
                         await db.execute(
                             update(model)
                             .where(model.transaction_id.in_(transaction_ids_subquery))
@@ -1339,8 +1359,10 @@ class UserService:
                     WithdrawalRequest,
                 )
 
-                await db.execute(delete(SavedPaymentMethod).where(SavedPaymentMethod.user_id == user_id))
-                await db.execute(delete(RioPayPayment).where(RioPayPayment.user_id == user_id))
+                if await _table_exists(SavedPaymentMethod):
+                    await db.execute(delete(SavedPaymentMethod).where(SavedPaymentMethod.user_id == user_id))
+                if await _table_exists(RioPayPayment):
+                    await db.execute(delete(RioPayPayment).where(RioPayPayment.user_id == user_id))
                 await db.execute(delete(AdminAuditLog).where(AdminAuditLog.user_id == user_id))
                 await db.execute(delete(WithdrawalRequest).where(WithdrawalRequest.user_id == user_id))
                 await db.execute(
