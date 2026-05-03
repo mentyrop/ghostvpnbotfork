@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import structlog
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -30,7 +31,12 @@ async def get_cabinet_db() -> AsyncSession:
         try:
             yield session
         finally:
-            await session.close()
+            try:
+                await session.close()
+            except (InterfaceError, OperationalError) as exc:
+                # Connection may already be dropped by network/DB restart.
+                # Don't fail request teardown because business logic already finished.
+                logger.warning('Ignoring DB close error in cabinet session teardown', error=str(exc))
 
 
 async def get_current_cabinet_user(

@@ -4,6 +4,7 @@ from collections.abc import AsyncGenerator
 
 from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader
+from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.database import AsyncSessionLocal
@@ -19,7 +20,11 @@ async def get_db_session() -> AsyncGenerator[AsyncSession]:
         try:
             yield session
         finally:
-            await session.close()
+            try:
+                await session.close()
+            except (InterfaceError, OperationalError):
+                # Avoid noisy teardown tracebacks when DB connection was already closed.
+                pass
 
 
 async def require_api_token(

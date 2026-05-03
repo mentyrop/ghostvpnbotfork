@@ -467,11 +467,39 @@ async def _send_promo_notifications(
                     reply_markup=keyboard,
                 )
                 return True
-            except (TelegramForbiddenError, TelegramBadRequest) as exc:
-                logger.warning('Failed to send promo notification to user', telegram_id=user.telegram_id, exc=exc)
+            except TelegramForbiddenError as exc:
+                logger.info(
+                    'Promo notification skipped: bot blocked by user',
+                    user_id=user.id,
+                    telegram_id=user.telegram_id,
+                    error=str(exc),
+                )
+                return False
+            except TelegramBadRequest as exc:
+                err = str(exc).lower()
+                # Typical "hard" delivery errors (user unreachable) shouldn't spam tracebacks.
+                if 'bot was blocked' in err or 'user is deactivated' in err or 'chat not found' in err:
+                    logger.info(
+                        'Promo notification skipped: user unreachable',
+                        user_id=user.id,
+                        telegram_id=user.telegram_id,
+                        error=str(exc),
+                    )
+                else:
+                    logger.warning(
+                        'Failed to send promo notification to user',
+                        user_id=user.id,
+                        telegram_id=user.telegram_id,
+                        error=str(exc),
+                    )
                 return False
             except Exception as exc:
-                logger.error('Error sending promo notification to user', telegram_id=user.telegram_id, exc=exc)
+                logger.error(
+                    'Error sending promo notification to user',
+                    user_id=user.id,
+                    telegram_id=user.telegram_id,
+                    error=str(exc),
+                )
                 return False
 
     # Send in batches
