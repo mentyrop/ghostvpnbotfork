@@ -1334,7 +1334,6 @@ class UserService:
                     AccessPolicy,
                     AdminAuditLog,
                     AdminRole,
-                    RioPayPayment,
                     SavedPaymentMethod,
                     UserRole,
                     WithdrawalRequest,
