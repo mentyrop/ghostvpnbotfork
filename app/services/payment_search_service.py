@@ -33,6 +33,7 @@ from app.database.models import (
     PayPearPayment,
     PlategaPayment,
     RioPayPayment,
+    RobokassaPayment,
     RollyPayPayment,
     SeverPayPayment,
     Transaction,
