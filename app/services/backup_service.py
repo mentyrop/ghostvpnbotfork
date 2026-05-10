@@ -16,6 +16,7 @@ from typing import Any
 import aiofiles
 import pyzipper
 import structlog
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import FSInputFile
 from sqlalchemy import inspect, select, text
 from sqlalchemy.exc import IntegrityError
@@ -1906,8 +1907,19 @@ class BackupService:
             if settings.BACKUP_SEND_TOPIC_ID:
                 send_kwargs['message_thread_id'] = settings.BACKUP_SEND_TOPIC_ID
 
-            await self.bot.send_document(**send_kwargs)
-            logger.info('Бекап отправлен в чат', chat_id=chat_id)
+            try:
+                await self.bot.send_document(**send_kwargs)
+                logger.info('Бекап отправлен в чат', chat_id=chat_id)
+            except TelegramBadRequest as e:
+                err = str(e).lower()
+                if 'chat not found' in err:
+                    logger.warning(
+                        'Пропущена отправка бекапа: чат не найден, проверьте BACKUP_SEND_CHAT_ID',
+                        chat_id=chat_id,
+                        error=str(e),
+                    )
+                    return
+                raise
 
             if temp_zip_path and await asyncio.to_thread(Path(temp_zip_path).exists):
                 try:

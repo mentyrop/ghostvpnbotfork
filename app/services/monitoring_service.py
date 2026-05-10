@@ -1630,21 +1630,21 @@ class MonitoringService:
 
             extend_callback = f'se:{subscription.id}' if settings.is_multi_tariff_enabled() else 'subscription_extend'
             sub_btn_text = texts.t(
-                'BTN_MY_SUBSCRIPTIONS' if settings.is_multi_tariff_enabled() else 'BTN_MY_SUBSCRIPTION',
+                'MY_SUBSCRIPTIONS_BUTTON' if settings.is_multi_tariff_enabled() else 'MY_SUBSCRIPTION_BUTTON',
                 '📱 Мои подписки' if settings.is_multi_tariff_enabled() else '📱 Моя подписка',
             )
             keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
                     [
                         build_miniapp_or_callback_button(
-                            text=texts.t('BTN_RENEW_SUBSCRIPTION', '⏰ Продлить подписку'),
+                            text=texts.t('MENU_EXTEND_SUBSCRIPTION', '⏰ Продлить подписку'),
                             callback_data=extend_callback,
                             cabinet_path='/subscription',
                         )
                     ],
                     [
                         build_miniapp_or_callback_button(
-                            text=texts.t('BTN_TOPUP_BALANCE', '💳 Пополнить баланс'),
+                            text=texts.t('TOPUP_BALANCE_BUTTON', '💳 Пополнить баланс'),
                             callback_data='balance_topup',
                         )
                     ],

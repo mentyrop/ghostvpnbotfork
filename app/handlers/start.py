@@ -876,39 +876,48 @@ async def cmd_start(message: types.Message, state: FSMContext, db: AsyncSession,
                         ).format(description=promo_result.get('description', ''))
                     )
                 else:
-                    error_messages = {
-                        'not_found': texts.t('PROMOCODE_INVALID', '❌ Неверный или несуществующий промокод'),
-                        'expired': texts.t('PROMOCODE_EXPIRED', '❌ Срок действия промокода истёк'),
-                        'inactive': texts.t('PROMOCODE_INACTIVE', '❌ Промокод деактивирован'),
-                        'not_yet_valid': texts.t('PROMOCODE_NOT_YET_VALID', '❌ Промокод ещё не начал действовать'),
-                        'used': texts.t('PROMOCODE_USED', '❌ Промокод уже исчерпан'),
-                        'already_used_by_user': texts.t('PROMOCODE_USED', '❌ Вы уже использовали этот промокод'),
-                        'not_first_purchase': texts.t(
-                            'PROMOCODE_NOT_FIRST_PURCHASE',
-                            '❌ Этот промокод доступен только для первой покупки',
-                        ),
-                        'active_discount_exists': texts.t(
+                    promo_error = promo_result.get('error')
+                    # Resolve only the actually needed error text to avoid noisy
+                    # "missing localization key" warnings for unused branches.
+                    if promo_error == 'not_found':
+                        error_text = texts.t('PROMOCODE_INVALID', '❌ Неверный или несуществующий промокод')
+                    elif promo_error == 'expired':
+                        error_text = texts.t('PROMOCODE_EXPIRED', '❌ Срок действия промокода истёк')
+                    elif promo_error in {'used', 'already_used_by_user'}:
+                        error_text = texts.t('PROMOCODE_USED', '❌ Промокод уже использован')
+                    elif promo_error == 'active_discount_exists':
+                        error_text = texts.t(
                             'PROMOCODE_ACTIVE_DISCOUNT_EXISTS',
                             '❌ У вас уже есть активная скидка. Используйте её перед активацией новой.',
-                        ),
-                        'no_subscription_for_days': texts.t(
-                            'PROMOCODE_NO_SUBSCRIPTION',
-                            '❌ Для активации этого промокода необходима подписка (активная или просроченная).',
-                        ),
-                        'daily_limit': texts.t(
-                            'PROMO_DAILY_LIMIT',
-                            '❌ Достигнут лимит активаций промокодов на сегодня. Попробуйте завтра.',
-                        ),
-                        'select_subscription': texts.t(
-                            'PROMOCODE_SELECT_SUBSCRIPTION',
-                            '🎟️ Для этого промокода выберите подписку в меню «Промокод».',
-                        ),
-                    }
-                    await message.answer(
-                        error_messages.get(
-                            promo_result.get('error'),
-                            texts.t('PROMOCODE_INVALID', '❌ Неверный или несуществующий промокод'),
                         )
+                    elif promo_error == 'inactive':
+                        error_text = texts.t('PROMOCODE_INVALID', '❌ Промокод деактивирован')
+                    elif promo_error == 'not_yet_valid':
+                        error_text = texts.t('PROMOCODE_INVALID', '❌ Промокод ещё не начал действовать')
+                    elif promo_error == 'not_first_purchase':
+                        error_text = texts.t(
+                            'PROMOCODE_INVALID',
+                            '❌ Этот промокод доступен только для первой покупки',
+                        )
+                    elif promo_error == 'no_subscription_for_days':
+                        error_text = texts.t(
+                            'PROMOCODE_INVALID',
+                            '❌ Для активации этого промокода необходима подписка (активная или просроченная).',
+                        )
+                    elif promo_error == 'daily_limit':
+                        error_text = texts.t(
+                            'PROMOCODE_INVALID',
+                            '❌ Достигнут лимит активаций промокодов на сегодня. Попробуйте завтра.',
+                        )
+                    elif promo_error == 'select_subscription':
+                        error_text = texts.t(
+                            'PROMOCODE_INVALID',
+                            '🎟️ Для этого промокода выберите подписку в меню «Промокод».',
+                        )
+                    else:
+                        error_text = texts.t('PROMOCODE_INVALID', '❌ Неверный или несуществующий промокод')
+                    await message.answer(
+                        error_text
                     )
             except Exception as exc:
                 logger.error('❌ Ошибка авто-активации deeplink промокода', code=deep_link_promocode, error=exc)
