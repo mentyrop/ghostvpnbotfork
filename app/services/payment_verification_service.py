@@ -1037,7 +1037,16 @@ async def _fetch_etoplatezhi_payments(db: AsyncSession, cutoff: datetime) -> lis
         .where(EtoplatezhiPayment.created_at >= cutoff)
         .order_by(desc(EtoplatezhiPayment.created_at))
     )
-    result = await db.execute(stmt)
+    try:
+        result = await db.execute(stmt)
+    except ProgrammingError as e:
+        if is_postgres_undefined_table(e, relation='etoplatezhi_payments'):
+            logger.warning(
+                'etoplatezhi_payments table missing; apply migration 0082 or run alembic upgrade',
+                error=str(e),
+            )
+            return []
+        raise
     records: list[PendingPayment] = []
     for payment in result.scalars().all():
         if not _is_etoplatezhi_pending(payment):
@@ -1474,7 +1483,13 @@ async def get_payment_record(
         )
 
     if method == PaymentMethod.ETOPLATEZHI:
-        payment = await db.get(EtoplatezhiPayment, local_payment_id)
+        try:
+            payment = await db.get(EtoplatezhiPayment, local_payment_id)
+        except ProgrammingError as e:
+            if is_postgres_undefined_table(e, relation='etoplatezhi_payments'):
+                logger.warning('etoplatezhi_payments table missing', error=str(e))
+                return None
+            raise
         if not payment:
             return None
         await db.refresh(payment, attribute_names=['user'])

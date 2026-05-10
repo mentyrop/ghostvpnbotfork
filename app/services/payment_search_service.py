@@ -873,7 +873,16 @@ async def _search_etoplatezhi(db: AsyncSession, params: SearchParams) -> list[Pe
             stmt = _apply_user_join_filter(stmt, EtoplatezhiPayment, kind, params.search)
 
     stmt = stmt.limit(MAX_RECORDS_PER_PROVIDER)
-    result = await db.execute(stmt)
+    try:
+        result = await db.execute(stmt)
+    except ProgrammingError as e:
+        if is_postgres_undefined_table(e, relation='etoplatezhi_payments'):
+            logger.warning(
+                'etoplatezhi_payments table missing; apply migration 0082 or run alembic upgrade',
+                error=str(e),
+            )
+            return []
+        raise
     records: list[PendingPayment] = []
     for payment in result.scalars().all():
         record = _build_record(
