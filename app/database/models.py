@@ -162,6 +162,7 @@ class PaymentMethod(Enum):
     KASSA_AI = 'kassa_ai'
     RIOPAY = 'riopay'
     SEVERPAY = 'severpay'
+    ROBOKASSA = 'robokassa'
     APPLE_IAP = 'apple_iap'
     PAYPEAR = 'paypear'
     ROLLYPAY = 'rollypay'
