@@ -33,7 +33,8 @@ REAL_PAYMENT_METHODS = [
     PaymentMethod.ROLLYPAY.value,
     PaymentMethod.PAYPEAR.value,
     PaymentMethod.AURAPAY.value,
-    PaymentMethod.OVERPAY.value,
+    PaymentMethod.ETOPLATEZHI.value,
+    PaymentMethod.ANTILOPAY.value,
 ]
 
 
