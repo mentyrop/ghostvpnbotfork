@@ -1002,7 +1002,16 @@ async def _fetch_aurapay_payments(db: AsyncSession, cutoff: datetime) -> list[Pe
         .where(AuraPayPayment.created_at >= cutoff)
         .order_by(desc(AuraPayPayment.created_at))
     )
-    result = await db.execute(stmt)
+    try:
+        result = await db.execute(stmt)
+    except ProgrammingError as e:
+        if is_postgres_undefined_table(e, relation='aurapay_payments'):
+            logger.warning(
+                'aurapay_payments table missing; apply migration 0081 or run alembic upgrade',
+                error=str(e),
+            )
+            return []
+        raise
     records: list[PendingPayment] = []
     for payment in result.scalars().all():
         if not _is_aurapay_pending(payment):
@@ -1444,7 +1453,13 @@ async def get_payment_record(
         )
 
     if method == PaymentMethod.AURAPAY:
-        payment = await db.get(AuraPayPayment, local_payment_id)
+        try:
+            payment = await db.get(AuraPayPayment, local_payment_id)
+        except ProgrammingError as e:
+            if is_postgres_undefined_table(e, relation='aurapay_payments'):
+                logger.warning('aurapay_payments table missing', error=str(e))
+                return None
+            raise
         if not payment:
             return None
         await db.refresh(payment, attribute_names=['user'])
@@ -1626,7 +1641,13 @@ async def run_manual_check(
             else:
                 payment = None
         elif method == PaymentMethod.AURAPAY:
-            aurapay_payment = await db.get(AuraPayPayment, local_payment_id)
+            try:
+                aurapay_payment = await db.get(AuraPayPayment, local_payment_id)
+            except ProgrammingError as e:
+                if is_postgres_undefined_table(e, relation='aurapay_payments'):
+                    logger.warning('aurapay_payments table missing', error=str(e))
+                    return None
+                raise
             if aurapay_payment:
                 result = await payment_service.check_aurapay_payment_status(db, aurapay_payment.order_id)
                 payment = result.get('payment') if result else None
