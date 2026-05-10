@@ -1,8 +1,8 @@
-"""ensure paypear_payments exists on already-stamped databases
+"""compat: ensure paypear table and revoke timestamp column exist
 
-Revision ID: 0071
-Revises: 0070
-Create Date: 2026-05-03
+Revision ID: 0075
+Revises: 0074
+Create Date: 2026-05-10
 """
 
 from typing import Sequence, Union
@@ -10,8 +10,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = '0071'
-down_revision: Union[str, None] = '0070'
+revision: str = '0075'
+down_revision: Union[str, None] = '0074'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -20,6 +20,16 @@ def _has_table(table: str) -> bool:
     conn = op.get_bind()
     inspector = sa.inspect(conn)
     return table in inspector.get_table_names()
+
+
+def _has_column(table: str, column: str) -> bool:
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    try:
+        cols = inspector.get_columns(table)
+    except Exception:
+        return False
+    return any(col.get('name') == column for col in cols)
 
 
 def upgrade() -> None:
@@ -54,8 +64,15 @@ def upgrade() -> None:
     op.create_index('ix_paypear_payments_order_id', 'paypear_payments', ['order_id'])
     op.create_index('ix_paypear_payments_paypear_id', 'paypear_payments', ['paypear_id'])
 
+    # Compatibility patch: some forks used an older custom "0071" revision id,
+    # so upstream's 0071 migration (last_revoke_at) may have been skipped.
+    if _has_table('subscriptions') and not _has_column('subscriptions', 'last_revoke_at'):
+        op.add_column('subscriptions', sa.Column('last_revoke_at', sa.DateTime(timezone=True), nullable=True))
+
 
 def downgrade() -> None:
+    if _has_table('subscriptions') and _has_column('subscriptions', 'last_revoke_at'):
+        op.drop_column('subscriptions', 'last_revoke_at')
     if _has_table('paypear_payments'):
         op.drop_index('ix_paypear_payments_paypear_id', table_name='paypear_payments')
         op.drop_index('ix_paypear_payments_order_id', table_name='paypear_payments')
