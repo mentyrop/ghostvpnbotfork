@@ -644,6 +644,7 @@ async def cmd_start(message: types.Message, state: FSMContext, db: AsyncSession,
             # НЕ удаляем Redis payload здесь - удаление только после успешной регистрации
 
     referral_code = None
+    deep_link_promocode: str | None = None
     campaign = None
     start_args = message.text.split()
     start_parameter = None
@@ -704,6 +705,29 @@ async def cmd_start(message: types.Message, state: FSMContext, db: AsyncSession,
                 await message.answer('❌ Сначала зарегистрируйтесь в боте, затем попробуйте войти в кабинет.')
             return
         start_parameter = None  # Invalid token, ignore
+
+    # Handle promo deep links: /start promo_{CODE}
+    if start_parameter and start_parameter.lower().startswith('promo_'):
+        from app.database.crud.promocode import check_promocode_validity
+        from app.utils.promo_rate_limiter import validate_promo_format
+
+        promo_code_candidate = start_parameter[6:].strip()
+        if validate_promo_format(promo_code_candidate):
+            promocode_check = await check_promocode_validity(db, promo_code_candidate)
+            if promocode_check['valid']:
+                deep_link_promocode = promo_code_candidate.upper()
+                await state.update_data(promocode=deep_link_promocode)
+                logger.info('🎟️ Deeplink промокод принят', promocode=deep_link_promocode)
+            else:
+                logger.info(
+                    '🎟️ Deeplink промокод невалиден',
+                    promocode=promo_code_candidate,
+                    error=promocode_check.get('error'),
+                )
+        else:
+            logger.info('🎟️ Deeplink промокод с неверным форматом', promocode=promo_code_candidate)
+        # Promo deep link shouldn't be treated as campaign/referral
+        start_parameter = None
 
     if start_parameter:
         campaign = await get_campaign_by_start_parameter(
@@ -837,6 +861,57 @@ async def cmd_start(message: types.Message, state: FSMContext, db: AsyncSession,
                 )
             except Exception as e:
                 logger.error('Ошибка отправки уведомления о рекламной кампании', error=e)
+
+        # Auto-activate promo from deep link for already registered users
+        if deep_link_promocode:
+            try:
+                from app.handlers.promocode import activate_promocode_for_registration
+
+                promo_result = await activate_promocode_for_registration(db, user.id, deep_link_promocode, message.bot)
+                if promo_result['success']:
+                    await message.answer(
+                        texts.t(
+                            'PROMOCODE_SUCCESS',
+                            '✅ Промокод активирован!\n{description}',
+                        ).format(description=promo_result.get('description', ''))
+                    )
+                else:
+                    error_messages = {
+                        'not_found': texts.t('PROMOCODE_INVALID', '❌ Неверный или несуществующий промокод'),
+                        'expired': texts.t('PROMOCODE_EXPIRED', '❌ Срок действия промокода истёк'),
+                        'inactive': texts.t('PROMOCODE_INACTIVE', '❌ Промокод деактивирован'),
+                        'not_yet_valid': texts.t('PROMOCODE_NOT_YET_VALID', '❌ Промокод ещё не начал действовать'),
+                        'used': texts.t('PROMOCODE_USED', '❌ Промокод уже исчерпан'),
+                        'already_used_by_user': texts.t('PROMOCODE_USED', '❌ Вы уже использовали этот промокод'),
+                        'not_first_purchase': texts.t(
+                            'PROMOCODE_NOT_FIRST_PURCHASE',
+                            '❌ Этот промокод доступен только для первой покупки',
+                        ),
+                        'active_discount_exists': texts.t(
+                            'PROMOCODE_ACTIVE_DISCOUNT_EXISTS',
+                            '❌ У вас уже есть активная скидка. Используйте её перед активацией новой.',
+                        ),
+                        'no_subscription_for_days': texts.t(
+                            'PROMOCODE_NO_SUBSCRIPTION',
+                            '❌ Для активации этого промокода необходима подписка (активная или просроченная).',
+                        ),
+                        'daily_limit': texts.t(
+                            'PROMO_DAILY_LIMIT',
+                            '❌ Достигнут лимит активаций промокодов на сегодня. Попробуйте завтра.',
+                        ),
+                        'select_subscription': texts.t(
+                            'PROMOCODE_SELECT_SUBSCRIPTION',
+                            '🎟️ Для этого промокода выберите подписку в меню «Промокод».',
+                        ),
+                    }
+                    await message.answer(
+                        error_messages.get(
+                            promo_result.get('error'),
+                            texts.t('PROMOCODE_INVALID', '❌ Неверный или несуществующий промокод'),
+                        )
+                    )
+            except Exception as exc:
+                logger.error('❌ Ошибка авто-активации deeplink промокода', code=deep_link_promocode, error=exc)
 
         # Auto-activate pending gift if deep link contained GIFT_
         if user:
