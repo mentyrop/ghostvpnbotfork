@@ -1,9 +1,8 @@
 """create info_pages table
 
-Revision ID: 0068
-Revises: 0067
+Revision ID: 0076
+Revises: 0075
 Create Date: 2026-04-21
-
 """
 
 from typing import Sequence, Union
@@ -11,8 +10,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = '0068'
-down_revision: Union[str, None] = '0067'
+revision: str = '0076'
+down_revision: Union[str, None] = '0075'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
