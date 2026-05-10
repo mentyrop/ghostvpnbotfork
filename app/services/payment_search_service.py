@@ -10,7 +10,6 @@ from typing import Any
 
 import structlog
 from sqlalchemy import cast, desc, or_, select
-from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.types import String as SAString
@@ -43,12 +42,12 @@ from app.database.models import (
     WataPayment,
     YooKassaPayment,
 )
+from app.services.payment_provider_table_guard import list_or_empty_if_table_missing
 from app.services.payment_verification_service import (
     PendingPayment,
     _build_record,
     _metadata_is_balance,
     _parse_cryptobot_amount_kopeks,
-    is_postgres_undefined_table,
 )
 
 
@@ -785,16 +784,7 @@ async def _search_rollypay(db: AsyncSession, params: SearchParams) -> list[Pendi
             stmt = _apply_user_join_filter(stmt, RollyPayPayment, kind, params.search)
 
     stmt = stmt.limit(MAX_RECORDS_PER_PROVIDER)
-    try:
-        result = await db.execute(stmt)
-    except ProgrammingError as e:
-        if is_postgres_undefined_table(e, relation='rollypay_payments'):
-            logger.warning(
-                'rollypay_payments table missing; apply migration 0080 or run alembic upgrade',
-                error=str(e),
-            )
-            return []
-        raise
+    result = await db.execute(stmt)
     records: list[PendingPayment] = []
     for payment in result.scalars().all():
         record = _build_record(
@@ -827,16 +817,7 @@ async def _search_aurapay(db: AsyncSession, params: SearchParams) -> list[Pendin
             stmt = _apply_user_join_filter(stmt, AuraPayPayment, kind, params.search)
 
     stmt = stmt.limit(MAX_RECORDS_PER_PROVIDER)
-    try:
-        result = await db.execute(stmt)
-    except ProgrammingError as e:
-        if is_postgres_undefined_table(e, relation='aurapay_payments'):
-            logger.warning(
-                'aurapay_payments table missing; apply migration 0081 or run alembic upgrade',
-                error=str(e),
-            )
-            return []
-        raise
+    result = await db.execute(stmt)
     records: list[PendingPayment] = []
     for payment in result.scalars().all():
         record = _build_record(
@@ -873,16 +854,7 @@ async def _search_etoplatezhi(db: AsyncSession, params: SearchParams) -> list[Pe
             stmt = _apply_user_join_filter(stmt, EtoplatezhiPayment, kind, params.search)
 
     stmt = stmt.limit(MAX_RECORDS_PER_PROVIDER)
-    try:
-        result = await db.execute(stmt)
-    except ProgrammingError as e:
-        if is_postgres_undefined_table(e, relation='etoplatezhi_payments'):
-            logger.warning(
-                'etoplatezhi_payments table missing; apply migration 0082 or run alembic upgrade',
-                error=str(e),
-            )
-            return []
-        raise
+    result = await db.execute(stmt)
     records: list[PendingPayment] = []
     for payment in result.scalars().all():
         record = _build_record(
@@ -1123,11 +1095,13 @@ async def search_payments(
         search_fn = _PROVIDER_SEARCH_MAP.get(params.method_filter)
         if search_fn is None:
             return [], 0
-        provider_results: list[list[PendingPayment]] = [await search_fn(db, params)]
+        provider_results: list[list[PendingPayment]] = [
+            await list_or_empty_if_table_missing(search_fn(db, params))
+        ]
     else:
         provider_results = []
         for search_fn in _PROVIDER_SEARCH_MAP.values():
-            provider_results.append(await search_fn(db, params))
+            provider_results.append(await list_or_empty_if_table_missing(search_fn(db, params)))
 
     # Flatten
     all_records: list[PendingPayment] = []
@@ -1176,11 +1150,15 @@ async def search_payments_stats(
         search_fn = _PROVIDER_SEARCH_MAP.get(stats_params.method_filter)
         if search_fn is None:
             return SearchStats()
-        all_records: list[PendingPayment] = await search_fn(db, stats_params)
+        all_records: list[PendingPayment] = await list_or_empty_if_table_missing(
+            search_fn(db, stats_params)
+        )
     else:
         all_records = []
         for search_fn in _PROVIDER_SEARCH_MAP.values():
-            all_records.extend(await search_fn(db, stats_params))
+            all_records.extend(
+                await list_or_empty_if_table_missing(search_fn(db, stats_params))
+            )
 
     # Classify
     pending_count = 0

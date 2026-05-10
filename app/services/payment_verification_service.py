@@ -5,14 +5,12 @@ from __future__ import annotations
 import asyncio
 import re
 from collections import Counter
-from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 import structlog
 from sqlalchemy import desc, select
-from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -46,17 +44,14 @@ from app.database.models import (
     YooKassaPayment,
 )
 
+from app.services.payment_provider_table_guard import (
+    get_instance_or_none_if_table_missing,
+    list_or_empty_if_table_missing,
+    value_or_none_if_table_missing,
+)
+
 
 logger = structlog.get_logger(__name__)
-
-
-def is_postgres_undefined_table(exc: BaseException, *, relation: str) -> bool:
-    """True if exc is a missing-relation error for the given table name (asyncpg/SQLAlchemy)."""
-    if not isinstance(exc, ProgrammingError):
-        return False
-    msg = str(exc).lower()
-    rel = relation.lower()
-    return rel in msg and ('does not exist' in msg or 'undefinedtable' in msg)
 
 
 PENDING_MAX_AGE = timedelta(hours=24)
@@ -967,16 +962,7 @@ async def _fetch_rollypay_payments(db: AsyncSession, cutoff: datetime) -> list[P
         .where(RollyPayPayment.created_at >= cutoff)
         .order_by(desc(RollyPayPayment.created_at))
     )
-    try:
-        result = await db.execute(stmt)
-    except ProgrammingError as e:
-        if is_postgres_undefined_table(e, relation='rollypay_payments'):
-            logger.warning(
-                'rollypay_payments table missing; apply migration 0080 or run alembic upgrade',
-                error=str(e),
-            )
-            return []
-        raise
+    result = await db.execute(stmt)
     records: list[PendingPayment] = []
     for payment in result.scalars().all():
         if not _is_rollypay_pending(payment):
@@ -1002,16 +988,7 @@ async def _fetch_aurapay_payments(db: AsyncSession, cutoff: datetime) -> list[Pe
         .where(AuraPayPayment.created_at >= cutoff)
         .order_by(desc(AuraPayPayment.created_at))
     )
-    try:
-        result = await db.execute(stmt)
-    except ProgrammingError as e:
-        if is_postgres_undefined_table(e, relation='aurapay_payments'):
-            logger.warning(
-                'aurapay_payments table missing; apply migration 0081 or run alembic upgrade',
-                error=str(e),
-            )
-            return []
-        raise
+    result = await db.execute(stmt)
     records: list[PendingPayment] = []
     for payment in result.scalars().all():
         if not _is_aurapay_pending(payment):
@@ -1037,16 +1014,7 @@ async def _fetch_etoplatezhi_payments(db: AsyncSession, cutoff: datetime) -> lis
         .where(EtoplatezhiPayment.created_at >= cutoff)
         .order_by(desc(EtoplatezhiPayment.created_at))
     )
-    try:
-        result = await db.execute(stmt)
-    except ProgrammingError as e:
-        if is_postgres_undefined_table(e, relation='etoplatezhi_payments'):
-            logger.warning(
-                'etoplatezhi_payments table missing; apply migration 0082 or run alembic upgrade',
-                error=str(e),
-            )
-            return []
-        raise
+    result = await db.execute(stmt)
     records: list[PendingPayment] = []
     for payment in result.scalars().all():
         if not _is_etoplatezhi_pending(payment):
@@ -1205,34 +1173,34 @@ async def list_recent_pending_payments(
 
     cutoff = datetime.now(UTC) - max_age
 
-    tasks: Iterable[list[PendingPayment]] = (
-        await _fetch_yookassa_payments(db, cutoff),
-        await _fetch_pal24_payments(db, cutoff),
-        await _fetch_mulenpay_payments(db, cutoff),
-        await _fetch_wata_payments(db, cutoff),
-        await _fetch_platega_payments(db, cutoff),
-        await _fetch_heleket_payments(db, cutoff),
-        await _fetch_cryptobot_payments(db, cutoff),
-        await _fetch_cloudpayments_payments(db, cutoff),
-        await _fetch_freekassa_payments(db, cutoff),
-        await _fetch_kassa_ai_payments(db, cutoff),
-        await _fetch_robokassa_payments(db, cutoff),
-        await _fetch_riopay_payments(db, cutoff),
-        await _fetch_severpay_payments(db, cutoff),
-        await _fetch_paypear_payments(db, cutoff),
-        await _fetch_rollypay_payments(db, cutoff),
-        await _fetch_aurapay_payments(db, cutoff),
-        await _fetch_etoplatezhi_payments(db, cutoff),
-        await _fetch_antilopay_payments(db, cutoff),
-        await _fetch_jupiter_payments(db, cutoff),
-        await _fetch_donut_payments(db, cutoff),
-        await _fetch_lava_payments(db, cutoff),
-        await _fetch_stars_transactions(db, cutoff),
+    fetchers: tuple[Any, ...] = (
+        _fetch_yookassa_payments,
+        _fetch_pal24_payments,
+        _fetch_mulenpay_payments,
+        _fetch_wata_payments,
+        _fetch_platega_payments,
+        _fetch_heleket_payments,
+        _fetch_cryptobot_payments,
+        _fetch_cloudpayments_payments,
+        _fetch_freekassa_payments,
+        _fetch_kassa_ai_payments,
+        _fetch_robokassa_payments,
+        _fetch_riopay_payments,
+        _fetch_severpay_payments,
+        _fetch_paypear_payments,
+        _fetch_rollypay_payments,
+        _fetch_aurapay_payments,
+        _fetch_etoplatezhi_payments,
+        _fetch_antilopay_payments,
+        _fetch_jupiter_payments,
+        _fetch_donut_payments,
+        _fetch_lava_payments,
+        _fetch_stars_transactions,
     )
 
     records: list[PendingPayment] = []
-    for batch in tasks:
-        records.extend(batch)
+    for fetch in fetchers:
+        records.extend(await list_or_empty_if_table_missing(fetch(db, cutoff)))
 
     records.sort(key=lambda item: item.created_at, reverse=True)
     return records
@@ -1245,342 +1213,327 @@ async def get_payment_record(
 ) -> PendingPayment | None:
     """Load single payment record and normalize it to :class:`PendingPayment`."""
 
-    cutoff = datetime.now(UTC) - PENDING_MAX_AGE
+    async def _inner() -> PendingPayment | None:
+        cutoff = datetime.now(UTC) - PENDING_MAX_AGE
 
-    if method == PaymentMethod.PAL24:
-        payment = await db.get(Pal24Payment, local_payment_id)
-        if not payment:
-            return None
-        await db.refresh(payment, attribute_names=['user'])
-        return _build_record(
-            method,
-            payment,
-            identifier=payment.bill_id,
-            amount_kopeks=payment.amount_kopeks,
-            status=payment.status or '',
-            is_paid=bool(payment.is_paid),
-            expires_at=getattr(payment, 'expires_at', None),
-        )
+        if method == PaymentMethod.PAL24:
+            payment = await db.get(Pal24Payment, local_payment_id)
+            if not payment:
+                return None
+            await db.refresh(payment, attribute_names=['user'])
+            return _build_record(
+                method,
+                payment,
+                identifier=payment.bill_id,
+                amount_kopeks=payment.amount_kopeks,
+                status=payment.status or '',
+                is_paid=bool(payment.is_paid),
+                expires_at=getattr(payment, 'expires_at', None),
+            )
 
-    if method == PaymentMethod.MULENPAY:
-        payment = await db.get(MulenPayPayment, local_payment_id)
-        if not payment:
-            return None
-        await db.refresh(payment, attribute_names=['user'])
-        return _build_record(
-            method,
-            payment,
-            identifier=payment.uuid,
-            amount_kopeks=payment.amount_kopeks,
-            status=payment.status or '',
-            is_paid=bool(payment.is_paid),
-        )
+        if method == PaymentMethod.MULENPAY:
+            payment = await db.get(MulenPayPayment, local_payment_id)
+            if not payment:
+                return None
+            await db.refresh(payment, attribute_names=['user'])
+            return _build_record(
+                method,
+                payment,
+                identifier=payment.uuid,
+                amount_kopeks=payment.amount_kopeks,
+                status=payment.status or '',
+                is_paid=bool(payment.is_paid),
+            )
 
-    if method == PaymentMethod.WATA:
-        payment = await db.get(WataPayment, local_payment_id)
-        if not payment:
-            return None
-        await db.refresh(payment, attribute_names=['user'])
-        return _build_record(
-            method,
-            payment,
-            identifier=payment.payment_link_id,
-            amount_kopeks=payment.amount_kopeks,
-            status=payment.status or '',
-            is_paid=bool(payment.is_paid),
-            expires_at=getattr(payment, 'expires_at', None),
-        )
+        if method == PaymentMethod.WATA:
+            payment = await db.get(WataPayment, local_payment_id)
+            if not payment:
+                return None
+            await db.refresh(payment, attribute_names=['user'])
+            return _build_record(
+                method,
+                payment,
+                identifier=payment.payment_link_id,
+                amount_kopeks=payment.amount_kopeks,
+                status=payment.status or '',
+                is_paid=bool(payment.is_paid),
+                expires_at=getattr(payment, 'expires_at', None),
+            )
 
-    if method == PaymentMethod.PLATEGA:
-        payment = await db.get(PlategaPayment, local_payment_id)
-        if not payment:
-            return None
-        await db.refresh(payment, attribute_names=['user'])
-        identifier = payment.platega_transaction_id or payment.correlation_id or str(payment.id)
-        return _build_record(
-            method,
-            payment,
-            identifier=identifier,
-            amount_kopeks=payment.amount_kopeks,
-            status=payment.status or '',
-            is_paid=bool(payment.is_paid),
-            expires_at=getattr(payment, 'expires_at', None),
-        )
+        if method == PaymentMethod.PLATEGA:
+            payment = await db.get(PlategaPayment, local_payment_id)
+            if not payment:
+                return None
+            await db.refresh(payment, attribute_names=['user'])
+            identifier = payment.platega_transaction_id or payment.correlation_id or str(payment.id)
+            return _build_record(
+                method,
+                payment,
+                identifier=identifier,
+                amount_kopeks=payment.amount_kopeks,
+                status=payment.status or '',
+                is_paid=bool(payment.is_paid),
+                expires_at=getattr(payment, 'expires_at', None),
+            )
 
-    if method == PaymentMethod.HELEKET:
-        payment = await db.get(HeleketPayment, local_payment_id)
-        if not payment:
-            return None
-        await db.refresh(payment, attribute_names=['user'])
-        return _build_record(
-            method,
-            payment,
-            identifier=payment.uuid,
-            amount_kopeks=payment.amount_kopeks,
-            status=payment.status or '',
-            is_paid=bool(payment.is_paid),
-            expires_at=getattr(payment, 'expires_at', None),
-        )
+        if method == PaymentMethod.HELEKET:
+            payment = await db.get(HeleketPayment, local_payment_id)
+            if not payment:
+                return None
+            await db.refresh(payment, attribute_names=['user'])
+            return _build_record(
+                method,
+                payment,
+                identifier=payment.uuid,
+                amount_kopeks=payment.amount_kopeks,
+                status=payment.status or '',
+                is_paid=bool(payment.is_paid),
+                expires_at=getattr(payment, 'expires_at', None),
+            )
 
-    if method == PaymentMethod.YOOKASSA:
-        payment = await db.get(YooKassaPayment, local_payment_id)
-        if not payment:
-            return None
-        await db.refresh(payment, attribute_names=['user'])
-        if payment.created_at < cutoff:
-            logger.debug('YooKassa payment is older than cutoff', payment_id=payment.id)
-        return _build_record(
-            method,
-            payment,
-            identifier=payment.yookassa_payment_id,
-            amount_kopeks=payment.amount_kopeks,
-            status=payment.status or '',
-            is_paid=bool(getattr(payment, 'is_paid', False)),
-        )
+        if method == PaymentMethod.YOOKASSA:
+            payment = await db.get(YooKassaPayment, local_payment_id)
+            if not payment:
+                return None
+            await db.refresh(payment, attribute_names=['user'])
+            if payment.created_at < cutoff:
+                logger.debug('YooKassa payment is older than cutoff', payment_id=payment.id)
+            return _build_record(
+                method,
+                payment,
+                identifier=payment.yookassa_payment_id,
+                amount_kopeks=payment.amount_kopeks,
+                status=payment.status or '',
+                is_paid=bool(getattr(payment, 'is_paid', False)),
+            )
 
-    if method == PaymentMethod.CRYPTOBOT:
-        payment = await db.get(CryptoBotPayment, local_payment_id)
-        if not payment:
-            return None
-        await db.refresh(payment, attribute_names=['user'])
-        amount_kopeks = _parse_cryptobot_amount_kopeks(payment)
-        return _build_record(
-            method,
-            payment,
-            identifier=payment.invoice_id,
-            amount_kopeks=amount_kopeks,
-            status=payment.status or '',
-            is_paid=bool(payment.is_paid),
-        )
+        if method == PaymentMethod.CRYPTOBOT:
+            payment = await db.get(CryptoBotPayment, local_payment_id)
+            if not payment:
+                return None
+            await db.refresh(payment, attribute_names=['user'])
+            amount_kopeks = _parse_cryptobot_amount_kopeks(payment)
+            return _build_record(
+                method,
+                payment,
+                identifier=payment.invoice_id,
+                amount_kopeks=amount_kopeks,
+                status=payment.status or '',
+                is_paid=bool(payment.is_paid),
+            )
 
-    if method == PaymentMethod.CLOUDPAYMENTS:
-        payment = await db.get(CloudPaymentsPayment, local_payment_id)
-        if not payment:
-            return None
-        await db.refresh(payment, attribute_names=['user'])
-        return _build_record(
-            method,
-            payment,
-            identifier=payment.invoice_id,
-            amount_kopeks=payment.amount_kopeks,
-            status=payment.status or '',
-            is_paid=bool(payment.is_paid),
-        )
+        if method == PaymentMethod.CLOUDPAYMENTS:
+            payment = await db.get(CloudPaymentsPayment, local_payment_id)
+            if not payment:
+                return None
+            await db.refresh(payment, attribute_names=['user'])
+            return _build_record(
+                method,
+                payment,
+                identifier=payment.invoice_id,
+                amount_kopeks=payment.amount_kopeks,
+                status=payment.status or '',
+                is_paid=bool(payment.is_paid),
+            )
 
-    if method == PaymentMethod.FREEKASSA:
-        payment = await db.get(FreekassaPayment, local_payment_id)
-        if not payment:
-            return None
-        await db.refresh(payment, attribute_names=['user'])
-        return _build_record(
-            method,
-            payment,
-            identifier=payment.order_id,
-            amount_kopeks=payment.amount_kopeks,
-            status=payment.status or '',
-            is_paid=bool(payment.is_paid),
-        )
+        if method == PaymentMethod.FREEKASSA:
+            payment = await db.get(FreekassaPayment, local_payment_id)
+            if not payment:
+                return None
+            await db.refresh(payment, attribute_names=['user'])
+            return _build_record(
+                method,
+                payment,
+                identifier=payment.order_id,
+                amount_kopeks=payment.amount_kopeks,
+                status=payment.status or '',
+                is_paid=bool(payment.is_paid),
+            )
 
-    if method == PaymentMethod.KASSA_AI:
-        payment = await db.get(KassaAiPayment, local_payment_id)
-        if not payment:
-            return None
-        await db.refresh(payment, attribute_names=['user'])
-        return _build_record(
-            method,
-            payment,
-            identifier=payment.order_id,
-            amount_kopeks=payment.amount_kopeks,
-            status=payment.status or '',
-            is_paid=bool(payment.is_paid),
-        )
+        if method == PaymentMethod.KASSA_AI:
+            payment = await db.get(KassaAiPayment, local_payment_id)
+            if not payment:
+                return None
+            await db.refresh(payment, attribute_names=['user'])
+            return _build_record(
+                method,
+                payment,
+                identifier=payment.order_id,
+                amount_kopeks=payment.amount_kopeks,
+                status=payment.status or '',
+                is_paid=bool(payment.is_paid),
+            )
 
-    if method == PaymentMethod.RIOPAY:
-        payment = await db.get(RioPayPayment, local_payment_id)
-        if not payment:
-            return None
-        await db.refresh(payment, attribute_names=['user'])
-        return _build_record(
-            method,
-            payment,
-            identifier=payment.order_id,
-            amount_kopeks=payment.amount_kopeks,
-            status=payment.status or '',
-            is_paid=bool(payment.is_paid),
-            expires_at=getattr(payment, 'expires_at', None),
-        )
+        if method == PaymentMethod.RIOPAY:
+            payment = await db.get(RioPayPayment, local_payment_id)
+            if not payment:
+                return None
+            await db.refresh(payment, attribute_names=['user'])
+            return _build_record(
+                method,
+                payment,
+                identifier=payment.order_id,
+                amount_kopeks=payment.amount_kopeks,
+                status=payment.status or '',
+                is_paid=bool(payment.is_paid),
+                expires_at=getattr(payment, 'expires_at', None),
+            )
 
-    if method == PaymentMethod.SEVERPAY:
-        payment = await db.get(SeverPayPayment, local_payment_id)
-        if not payment:
-            return None
-        await db.refresh(payment, attribute_names=['user'])
-        return _build_record(
-            method,
-            payment,
-            identifier=payment.order_id,
-            amount_kopeks=payment.amount_kopeks,
-            status=payment.status or '',
-            is_paid=bool(payment.is_paid),
-            expires_at=getattr(payment, 'expires_at', None),
-        )
+        if method == PaymentMethod.SEVERPAY:
+            payment = await db.get(SeverPayPayment, local_payment_id)
+            if not payment:
+                return None
+            await db.refresh(payment, attribute_names=['user'])
+            return _build_record(
+                method,
+                payment,
+                identifier=payment.order_id,
+                amount_kopeks=payment.amount_kopeks,
+                status=payment.status or '',
+                is_paid=bool(payment.is_paid),
+                expires_at=getattr(payment, 'expires_at', None),
+            )
 
-    if method == PaymentMethod.PAYPEAR:
-        payment = await db.get(PayPearPayment, local_payment_id)
-        if not payment:
-            return None
-        await db.refresh(payment, attribute_names=['user'])
-        return _build_record(
-            method,
-            payment,
-            identifier=payment.order_id,
-            amount_kopeks=payment.amount_kopeks,
-            status=payment.status or '',
-            is_paid=bool(payment.is_paid),
-            expires_at=getattr(payment, 'expires_at', None),
-        )
+        if method == PaymentMethod.PAYPEAR:
+            payment = await db.get(PayPearPayment, local_payment_id)
+            if not payment:
+                return None
+            await db.refresh(payment, attribute_names=['user'])
+            return _build_record(
+                method,
+                payment,
+                identifier=payment.order_id,
+                amount_kopeks=payment.amount_kopeks,
+                status=payment.status or '',
+                is_paid=bool(payment.is_paid),
+                expires_at=getattr(payment, 'expires_at', None),
+            )
 
-    if method == PaymentMethod.ROLLYPAY:
-        try:
+        if method == PaymentMethod.ROLLYPAY:
             payment = await db.get(RollyPayPayment, local_payment_id)
-        except ProgrammingError as e:
-            if is_postgres_undefined_table(e, relation='rollypay_payments'):
-                logger.warning('rollypay_payments table missing', error=str(e))
+            if not payment:
                 return None
-            raise
-        if not payment:
-            return None
-        await db.refresh(payment, attribute_names=['user'])
-        return _build_record(
-            method,
-            payment,
-            identifier=payment.order_id,
-            amount_kopeks=payment.amount_kopeks,
-            status=payment.status or '',
-            is_paid=bool(payment.is_paid),
-            expires_at=getattr(payment, 'expires_at', None),
-        )
+            await db.refresh(payment, attribute_names=['user'])
+            return _build_record(
+                method,
+                payment,
+                identifier=payment.order_id,
+                amount_kopeks=payment.amount_kopeks,
+                status=payment.status or '',
+                is_paid=bool(payment.is_paid),
+                expires_at=getattr(payment, 'expires_at', None),
+            )
 
-    if method == PaymentMethod.AURAPAY:
-        try:
+        if method == PaymentMethod.AURAPAY:
             payment = await db.get(AuraPayPayment, local_payment_id)
-        except ProgrammingError as e:
-            if is_postgres_undefined_table(e, relation='aurapay_payments'):
-                logger.warning('aurapay_payments table missing', error=str(e))
+            if not payment:
                 return None
-            raise
-        if not payment:
-            return None
-        await db.refresh(payment, attribute_names=['user'])
-        return _build_record(
-            method,
-            payment,
-            identifier=payment.order_id,
-            amount_kopeks=payment.amount_kopeks,
-            status=payment.status or '',
-            is_paid=bool(payment.is_paid),
-            expires_at=getattr(payment, 'expires_at', None),
-        )
+            await db.refresh(payment, attribute_names=['user'])
+            return _build_record(
+                method,
+                payment,
+                identifier=payment.order_id,
+                amount_kopeks=payment.amount_kopeks,
+                status=payment.status or '',
+                is_paid=bool(payment.is_paid),
+                expires_at=getattr(payment, 'expires_at', None),
+            )
 
-    if method == PaymentMethod.ETOPLATEZHI:
-        try:
+        if method == PaymentMethod.ETOPLATEZHI:
             payment = await db.get(EtoplatezhiPayment, local_payment_id)
-        except ProgrammingError as e:
-            if is_postgres_undefined_table(e, relation='etoplatezhi_payments'):
-                logger.warning('etoplatezhi_payments table missing', error=str(e))
+            if not payment:
                 return None
-            raise
-        if not payment:
-            return None
-        await db.refresh(payment, attribute_names=['user'])
-        return _build_record(
-            method,
-            payment,
-            identifier=payment.order_id,
-            amount_kopeks=payment.amount_kopeks,
-            status=payment.status or '',
-            is_paid=bool(payment.is_paid),
-            expires_at=getattr(payment, 'expires_at', None),
-        )
+            await db.refresh(payment, attribute_names=['user'])
+            return _build_record(
+                method,
+                payment,
+                identifier=payment.order_id,
+                amount_kopeks=payment.amount_kopeks,
+                status=payment.status or '',
+                is_paid=bool(payment.is_paid),
+                expires_at=getattr(payment, 'expires_at', None),
+            )
 
-    if method == PaymentMethod.ANTILOPAY:
-        payment = await db.get(AntilopayPayment, local_payment_id)
-        if not payment:
-            return None
-        await db.refresh(payment, attribute_names=['user'])
-        return _build_record(
-            method,
-            payment,
-            identifier=payment.order_id,
-            amount_kopeks=payment.amount_kopeks,
-            status=payment.status or '',
-            is_paid=bool(payment.is_paid),
-            expires_at=getattr(payment, 'expires_at', None),
-        )
+        if method == PaymentMethod.ANTILOPAY:
+            payment = await db.get(AntilopayPayment, local_payment_id)
+            if not payment:
+                return None
+            await db.refresh(payment, attribute_names=['user'])
+            return _build_record(
+                method,
+                payment,
+                identifier=payment.order_id,
+                amount_kopeks=payment.amount_kopeks,
+                status=payment.status or '',
+                is_paid=bool(payment.is_paid),
+                expires_at=getattr(payment, 'expires_at', None),
+            )
 
-    if method == PaymentMethod.JUPITER:
-        payment = await db.get(JupiterPayment, local_payment_id)
-        if not payment:
-            return None
-        await db.refresh(payment, attribute_names=['user'])
-        return _build_record(
-            method,
-            payment,
-            identifier=payment.order_id,
-            amount_kopeks=payment.amount_kopeks,
-            status=payment.status or '',
-            is_paid=bool(payment.is_paid),
-            expires_at=getattr(payment, 'expires_at', None),
-        )
+        if method == PaymentMethod.JUPITER:
+            payment = await db.get(JupiterPayment, local_payment_id)
+            if not payment:
+                return None
+            await db.refresh(payment, attribute_names=['user'])
+            return _build_record(
+                method,
+                payment,
+                identifier=payment.order_id,
+                amount_kopeks=payment.amount_kopeks,
+                status=payment.status or '',
+                is_paid=bool(payment.is_paid),
+                expires_at=getattr(payment, 'expires_at', None),
+            )
 
-    if method == PaymentMethod.DONUT:
-        payment = await db.get(DonutPayment, local_payment_id)
-        if not payment:
-            return None
-        await db.refresh(payment, attribute_names=['user'])
-        return _build_record(
-            method,
-            payment,
-            identifier=payment.order_id,
-            amount_kopeks=payment.amount_kopeks,
-            status=payment.status or '',
-            is_paid=bool(payment.is_paid),
-            expires_at=getattr(payment, 'expires_at', None),
-        )
+        if method == PaymentMethod.DONUT:
+            payment = await db.get(DonutPayment, local_payment_id)
+            if not payment:
+                return None
+            await db.refresh(payment, attribute_names=['user'])
+            return _build_record(
+                method,
+                payment,
+                identifier=payment.order_id,
+                amount_kopeks=payment.amount_kopeks,
+                status=payment.status or '',
+                is_paid=bool(payment.is_paid),
+                expires_at=getattr(payment, 'expires_at', None),
+            )
 
-    if method == PaymentMethod.LAVA:
-        payment = await db.get(LavaPayment, local_payment_id)
-        if not payment:
-            return None
-        await db.refresh(payment, attribute_names=['user'])
-        return _build_record(
-            method,
-            payment,
-            identifier=payment.order_id,
-            amount_kopeks=payment.amount_kopeks,
-            status=payment.status or '',
-            is_paid=bool(payment.is_paid),
-            expires_at=getattr(payment, 'expires_at', None),
-        )
+        if method == PaymentMethod.LAVA:
+            payment = await db.get(LavaPayment, local_payment_id)
+            if not payment:
+                return None
+            await db.refresh(payment, attribute_names=['user'])
+            return _build_record(
+                method,
+                payment,
+                identifier=payment.order_id,
+                amount_kopeks=payment.amount_kopeks,
+                status=payment.status or '',
+                is_paid=bool(payment.is_paid),
+                expires_at=getattr(payment, 'expires_at', None),
+            )
 
-    if method == PaymentMethod.TELEGRAM_STARS:
-        transaction = await db.get(Transaction, local_payment_id)
-        if not transaction:
-            return None
-        await db.refresh(transaction, attribute_names=['user'])
-        if transaction.payment_method != PaymentMethod.TELEGRAM_STARS.value:
-            return None
-        return _build_record(
-            method,
-            transaction,
-            identifier=transaction.external_id or str(transaction.id),
-            amount_kopeks=transaction.amount_kopeks,
-            status='paid' if transaction.is_completed else 'pending',
-            is_paid=bool(transaction.is_completed),
-        )
+        if method == PaymentMethod.TELEGRAM_STARS:
+            transaction = await db.get(Transaction, local_payment_id)
+            if not transaction:
+                return None
+            await db.refresh(transaction, attribute_names=['user'])
+            if transaction.payment_method != PaymentMethod.TELEGRAM_STARS.value:
+                return None
+            return _build_record(
+                method,
+                transaction,
+                identifier=transaction.external_id or str(transaction.id),
+                amount_kopeks=transaction.amount_kopeks,
+                status='paid' if transaction.is_completed else 'pending',
+                is_paid=bool(transaction.is_completed),
+            )
 
-    logger.debug('Unsupported payment method requested', method=method)
-    return None
+        logger.debug('Unsupported payment method requested', method=method)
+        return None
+
+    return await value_or_none_if_table_missing(_inner())
 
 
 async def run_manual_check(
@@ -1643,26 +1596,18 @@ async def run_manual_check(
             else:
                 payment = None
         elif method == PaymentMethod.ROLLYPAY:
-            try:
-                rollypay_payment = await db.get(RollyPayPayment, local_payment_id)
-            except ProgrammingError as e:
-                if is_postgres_undefined_table(e, relation='rollypay_payments'):
-                    logger.warning('rollypay_payments table missing', error=str(e))
-                    return None
-                raise
+            rollypay_payment = await get_instance_or_none_if_table_missing(
+                db, RollyPayPayment, local_payment_id
+            )
             if rollypay_payment:
                 result = await payment_service.check_rollypay_payment_status(db, rollypay_payment.order_id)
                 payment = result.get('payment') if result else None
             else:
                 payment = None
         elif method == PaymentMethod.AURAPAY:
-            try:
-                aurapay_payment = await db.get(AuraPayPayment, local_payment_id)
-            except ProgrammingError as e:
-                if is_postgres_undefined_table(e, relation='aurapay_payments'):
-                    logger.warning('aurapay_payments table missing', error=str(e))
-                    return None
-                raise
+            aurapay_payment = await get_instance_or_none_if_table_missing(
+                db, AuraPayPayment, local_payment_id
+            )
             if aurapay_payment:
                 result = await payment_service.check_aurapay_payment_status(db, aurapay_payment.order_id)
                 payment = result.get('payment') if result else None
