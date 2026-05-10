@@ -11,7 +11,7 @@ from collections.abc import Awaitable
 from typing import Any, TypeVar
 
 import structlog
-from sqlalchemy.exc import DBAPIError, ProgrammingError
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = structlog.get_logger(__name__)
@@ -27,16 +27,6 @@ def missing_pg_relation_name(exc: BaseException) -> str | None:
     return m.group(1) if m else None
 
 
-def _is_transaction_aborted_error(exc: BaseException) -> bool:
-    """Postgres left the connection in failed state; next SQL fails until ROLLBACK."""
-    msg = str(exc).lower()
-    return (
-        'current transaction is aborted' in msg
-        or 'infailedsqltransaction' in msg
-        or 'transaction is aborted' in msg
-    )
-
-
 def is_postgres_undefined_table(exc: BaseException, *, relation: str) -> bool:
     """True if *exc* is a missing-relation error for the given table name (asyncpg/SQLAlchemy)."""
     if not isinstance(exc, ProgrammingError):
@@ -50,9 +40,14 @@ async def list_or_empty_if_table_missing(
     db: AsyncSession,
     awaitable: Awaitable[list[_T]],
 ) -> list[_T]:
-    """Await a coroutine that returns a list; on missing PG relation return []."""
+    """Await a coroutine that returns a list; on missing PG relation return [].
+
+    Uses a SAVEPOINT so a failed provider query does not abort the whole session
+    (ORM instances loaded earlier stay usable — unlike session.rollback()).
+    """
     try:
-        return await awaitable
+        async with db.begin_nested():
+            return await awaitable
     except ProgrammingError as e:
         rel = missing_pg_relation_name(e)
         if rel is not None:
@@ -61,16 +56,6 @@ async def list_or_empty_if_table_missing(
                 relation=rel,
                 error=str(e),
             )
-            await db.rollback()
-            return []
-        raise
-    except DBAPIError as e:
-        if _is_transaction_aborted_error(e):
-            logger.warning(
-                'skipping provider batch: transaction aborted (resetting session)',
-                error=str(e),
-            )
-            await db.rollback()
             return []
         raise
 
@@ -81,7 +66,8 @@ async def value_or_none_if_table_missing(
 ) -> _T | None:
     """Await a coroutine; on missing PG relation return None (for single-record loads)."""
     try:
-        return await awaitable
+        async with db.begin_nested():
+            return await awaitable
     except ProgrammingError as e:
         rel = missing_pg_relation_name(e)
         if rel is not None:
@@ -90,16 +76,6 @@ async def value_or_none_if_table_missing(
                 relation=rel,
                 error=str(e),
             )
-            await db.rollback()
-            return None
-        raise
-    except DBAPIError as e:
-        if _is_transaction_aborted_error(e):
-            logger.warning(
-                'payment record query skipped: transaction aborted (resetting session)',
-                error=str(e),
-            )
-            await db.rollback()
             return None
         raise
 
@@ -115,8 +91,9 @@ async def scalars_all_from_stmt(
     if relation is None:
         raise TypeError('orm_model must define __tablename__')
     try:
-        result = await db.execute(stmt)
-        return list(result.scalars().all())
+        async with db.begin_nested():
+            result = await db.execute(stmt)
+            return list(result.scalars().all())
     except ProgrammingError as e:
         if is_postgres_undefined_table(e, relation=relation):
             logger.warning(
@@ -124,7 +101,6 @@ async def scalars_all_from_stmt(
                 table=relation,
                 error=str(e),
             )
-            await db.rollback()
             return []
         raise
 
@@ -139,10 +115,10 @@ async def get_instance_or_none_if_table_missing(
     if relation is None:
         raise TypeError('orm_model must define __tablename__')
     try:
-        return await db.get(orm_model, pk)
+        async with db.begin_nested():
+            return await db.get(orm_model, pk)
     except ProgrammingError as e:
         if is_postgres_undefined_table(e, relation=relation):
             logger.warning('session.get skipped: table missing', table=relation, error=str(e))
-            await db.rollback()
             return None
         raise
