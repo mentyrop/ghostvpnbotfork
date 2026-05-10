@@ -10,6 +10,7 @@ from typing import Any
 
 import structlog
 from sqlalchemy import cast, desc, or_, select
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.types import String as SAString
@@ -47,6 +48,7 @@ from app.services.payment_verification_service import (
     _build_record,
     _metadata_is_balance,
     _parse_cryptobot_amount_kopeks,
+    is_postgres_undefined_table,
 )
 
 
@@ -783,7 +785,16 @@ async def _search_rollypay(db: AsyncSession, params: SearchParams) -> list[Pendi
             stmt = _apply_user_join_filter(stmt, RollyPayPayment, kind, params.search)
 
     stmt = stmt.limit(MAX_RECORDS_PER_PROVIDER)
-    result = await db.execute(stmt)
+    try:
+        result = await db.execute(stmt)
+    except ProgrammingError as e:
+        if is_postgres_undefined_table(e, relation='rollypay_payments'):
+            logger.warning(
+                'rollypay_payments table missing; apply migration 0080 or run alembic upgrade',
+                error=str(e),
+            )
+            return []
+        raise
     records: list[PendingPayment] = []
     for payment in result.scalars().all():
         record = _build_record(

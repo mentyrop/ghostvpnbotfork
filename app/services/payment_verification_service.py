@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 from sqlalchemy import desc, select
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -47,6 +48,15 @@ from app.database.models import (
 
 
 logger = structlog.get_logger(__name__)
+
+
+def is_postgres_undefined_table(exc: BaseException, *, relation: str) -> bool:
+    """True if exc is a missing-relation error for the given table name (asyncpg/SQLAlchemy)."""
+    if not isinstance(exc, ProgrammingError):
+        return False
+    msg = str(exc).lower()
+    rel = relation.lower()
+    return rel in msg and ('does not exist' in msg or 'undefinedtable' in msg)
 
 
 PENDING_MAX_AGE = timedelta(hours=24)
@@ -957,7 +967,16 @@ async def _fetch_rollypay_payments(db: AsyncSession, cutoff: datetime) -> list[P
         .where(RollyPayPayment.created_at >= cutoff)
         .order_by(desc(RollyPayPayment.created_at))
     )
-    result = await db.execute(stmt)
+    try:
+        result = await db.execute(stmt)
+    except ProgrammingError as e:
+        if is_postgres_undefined_table(e, relation='rollypay_payments'):
+            logger.warning(
+                'rollypay_payments table missing; apply migration 0080 or run alembic upgrade',
+                error=str(e),
+            )
+            return []
+        raise
     records: list[PendingPayment] = []
     for payment in result.scalars().all():
         if not _is_rollypay_pending(payment):
@@ -1404,7 +1423,13 @@ async def get_payment_record(
         )
 
     if method == PaymentMethod.ROLLYPAY:
-        payment = await db.get(RollyPayPayment, local_payment_id)
+        try:
+            payment = await db.get(RollyPayPayment, local_payment_id)
+        except ProgrammingError as e:
+            if is_postgres_undefined_table(e, relation='rollypay_payments'):
+                logger.warning('rollypay_payments table missing', error=str(e))
+                return None
+            raise
         if not payment:
             return None
         await db.refresh(payment, attribute_names=['user'])
@@ -1588,7 +1613,13 @@ async def run_manual_check(
             else:
                 payment = None
         elif method == PaymentMethod.ROLLYPAY:
-            rollypay_payment = await db.get(RollyPayPayment, local_payment_id)
+            try:
+                rollypay_payment = await db.get(RollyPayPayment, local_payment_id)
+            except ProgrammingError as e:
+                if is_postgres_undefined_table(e, relation='rollypay_payments'):
+                    logger.warning('rollypay_payments table missing', error=str(e))
+                    return None
+                raise
             if rollypay_payment:
                 result = await payment_service.check_rollypay_payment_status(db, rollypay_payment.order_id)
                 payment = result.get('payment') if result else None
