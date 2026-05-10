@@ -1,7 +1,7 @@
 """ensure rollypay_payments table exists
 
 Revision ID: 0080
-Revises: 0075
+Revises: 0078
 Create Date: 2026-05-10
 
 Some deployments never applied 0059 (branching / duplicate revision ids).
@@ -14,7 +14,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = '0080'
-down_revision: Union[str, None] = '0075'
+down_revision: Union[str, None] = '0078'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
