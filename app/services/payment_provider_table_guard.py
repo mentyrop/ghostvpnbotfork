@@ -11,7 +11,7 @@ from collections.abc import Awaitable
 from typing import Any, TypeVar
 
 import structlog
-from sqlalchemy.exc import ProgrammingError
+from sqlalchemy.exc import DBAPIError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = structlog.get_logger(__name__)
@@ -27,6 +27,16 @@ def missing_pg_relation_name(exc: BaseException) -> str | None:
     return m.group(1) if m else None
 
 
+def _is_transaction_aborted_error(exc: BaseException) -> bool:
+    """Postgres left the connection in failed state; next SQL fails until ROLLBACK."""
+    msg = str(exc).lower()
+    return (
+        'current transaction is aborted' in msg
+        or 'infailedsqltransaction' in msg
+        or 'transaction is aborted' in msg
+    )
+
+
 def is_postgres_undefined_table(exc: BaseException, *, relation: str) -> bool:
     """True if *exc* is a missing-relation error for the given table name (asyncpg/SQLAlchemy)."""
     if not isinstance(exc, ProgrammingError):
@@ -36,7 +46,10 @@ def is_postgres_undefined_table(exc: BaseException, *, relation: str) -> bool:
     return rel in msg and ('does not exist' in msg or 'undefinedtable' in msg)
 
 
-async def list_or_empty_if_table_missing(awaitable: Awaitable[list[_T]]) -> list[_T]:
+async def list_or_empty_if_table_missing(
+    db: AsyncSession,
+    awaitable: Awaitable[list[_T]],
+) -> list[_T]:
     """Await a coroutine that returns a list; on missing PG relation return []."""
     try:
         return await awaitable
@@ -48,11 +61,24 @@ async def list_or_empty_if_table_missing(awaitable: Awaitable[list[_T]]) -> list
                 relation=rel,
                 error=str(e),
             )
+            await db.rollback()
+            return []
+        raise
+    except DBAPIError as e:
+        if _is_transaction_aborted_error(e):
+            logger.warning(
+                'skipping provider batch: transaction aborted (resetting session)',
+                error=str(e),
+            )
+            await db.rollback()
             return []
         raise
 
 
-async def value_or_none_if_table_missing(awaitable: Awaitable[_T]) -> _T | None:
+async def value_or_none_if_table_missing(
+    db: AsyncSession,
+    awaitable: Awaitable[_T],
+) -> _T | None:
     """Await a coroutine; on missing PG relation return None (for single-record loads)."""
     try:
         return await awaitable
@@ -64,6 +90,16 @@ async def value_or_none_if_table_missing(awaitable: Awaitable[_T]) -> _T | None:
                 relation=rel,
                 error=str(e),
             )
+            await db.rollback()
+            return None
+        raise
+    except DBAPIError as e:
+        if _is_transaction_aborted_error(e):
+            logger.warning(
+                'payment record query skipped: transaction aborted (resetting session)',
+                error=str(e),
+            )
+            await db.rollback()
             return None
         raise
 
@@ -88,6 +124,7 @@ async def scalars_all_from_stmt(
                 table=relation,
                 error=str(e),
             )
+            await db.rollback()
             return []
         raise
 
@@ -106,5 +143,6 @@ async def get_instance_or_none_if_table_missing(
     except ProgrammingError as e:
         if is_postgres_undefined_table(e, relation=relation):
             logger.warning('session.get skipped: table missing', table=relation, error=str(e))
+            await db.rollback()
             return None
         raise

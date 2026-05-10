@@ -1200,7 +1200,7 @@ async def list_recent_pending_payments(
 
     records: list[PendingPayment] = []
     for fetch in fetchers:
-        records.extend(await list_or_empty_if_table_missing(fetch(db, cutoff)))
+        records.extend(await list_or_empty_if_table_missing(db, fetch(db, cutoff)))
 
     records.sort(key=lambda item: item.created_at, reverse=True)
     return records
@@ -1533,7 +1533,7 @@ async def get_payment_record(
         logger.debug('Unsupported payment method requested', method=method)
         return None
 
-    return await value_or_none_if_table_missing(_inner())
+    return await value_or_none_if_table_missing(db, _inner())
 
 
 async def run_manual_check(

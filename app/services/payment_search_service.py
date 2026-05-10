@@ -1096,12 +1096,12 @@ async def search_payments(
         if search_fn is None:
             return [], 0
         provider_results: list[list[PendingPayment]] = [
-            await list_or_empty_if_table_missing(search_fn(db, params))
+            await list_or_empty_if_table_missing(db, search_fn(db, params))
         ]
     else:
         provider_results = []
         for search_fn in _PROVIDER_SEARCH_MAP.values():
-            provider_results.append(await list_or_empty_if_table_missing(search_fn(db, params)))
+            provider_results.append(await list_or_empty_if_table_missing(db, search_fn(db, params)))
 
     # Flatten
     all_records: list[PendingPayment] = []
@@ -1151,13 +1151,14 @@ async def search_payments_stats(
         if search_fn is None:
             return SearchStats()
         all_records: list[PendingPayment] = await list_or_empty_if_table_missing(
-            search_fn(db, stats_params)
+            db,
+            search_fn(db, stats_params),
         )
     else:
         all_records = []
         for search_fn in _PROVIDER_SEARCH_MAP.values():
             all_records.extend(
-                await list_or_empty_if_table_missing(search_fn(db, stats_params))
+                await list_or_empty_if_table_missing(db, search_fn(db, stats_params))
             )
 
     # Classify
