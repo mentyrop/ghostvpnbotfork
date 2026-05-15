@@ -30,107 +30,113 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
-_APPLE_TRANSACTIONS_DDL = """
-CREATE TABLE IF NOT EXISTS apple_transactions (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    transaction_id VARCHAR(64) UNIQUE NOT NULL,
-    original_transaction_id VARCHAR(64),
-    product_id VARCHAR(128) NOT NULL,
-    bundle_id VARCHAR(255) NOT NULL,
-    amount_kopeks INTEGER NOT NULL,
-    environment VARCHAR(16) NOT NULL,
-    status VARCHAR(50) DEFAULT 'verified',
-    is_paid BOOLEAN DEFAULT TRUE,
-    paid_at TIMESTAMP WITH TIME ZONE,
-    refunded_at TIMESTAMP WITH TIME ZONE,
-    transaction_id_fk INTEGER REFERENCES transactions(id),
-    metadata_json JSON,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS ix_apple_transactions_transaction_id          ON apple_transactions (transaction_id);
-CREATE INDEX IF NOT EXISTS ix_apple_transactions_original_transaction_id ON apple_transactions (original_transaction_id);
-CREATE INDEX IF NOT EXISTS ix_apple_transactions_user_id                 ON apple_transactions (user_id);
-"""
-
-_JUPITER_PAYMENTS_DDL = """
-CREATE TABLE IF NOT EXISTS jupiter_payments (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-    order_id VARCHAR(64) UNIQUE NOT NULL,
-    jupiter_transaction_id VARCHAR(128) UNIQUE,
-    amount_kopeks INTEGER NOT NULL,
-    currency VARCHAR(10) NOT NULL DEFAULT 'RUB',
-    description TEXT,
-    status VARCHAR(32) NOT NULL DEFAULT 'pending',
-    is_paid BOOLEAN NOT NULL DEFAULT FALSE,
-    payment_url TEXT,
-    payment_method VARCHAR(32),
-    metadata_json JSON,
-    callback_payload JSON,
-    paid_at TIMESTAMP WITH TIME ZONE,
-    expires_at TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    transaction_id INTEGER REFERENCES transactions(id)
-);
-CREATE INDEX IF NOT EXISTS ix_jupiter_payments_user_id                ON jupiter_payments (user_id);
-CREATE INDEX IF NOT EXISTS ix_jupiter_payments_order_id               ON jupiter_payments (order_id);
-CREATE INDEX IF NOT EXISTS ix_jupiter_payments_jupiter_transaction_id ON jupiter_payments (jupiter_transaction_id);
-"""
-
-_DONUT_PAYMENTS_DDL = """
-CREATE TABLE IF NOT EXISTS donut_payments (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-    order_id VARCHAR(64) UNIQUE NOT NULL,
-    donut_transaction_id VARCHAR(128) UNIQUE,
-    amount_kopeks INTEGER NOT NULL,
-    currency VARCHAR(10) NOT NULL DEFAULT 'RUB',
-    description TEXT,
-    status VARCHAR(32) NOT NULL DEFAULT 'pending',
-    is_paid BOOLEAN NOT NULL DEFAULT FALSE,
-    payment_url TEXT,
-    payment_method VARCHAR(32),
-    metadata_json JSON,
-    callback_payload JSON,
-    paid_at TIMESTAMP WITH TIME ZONE,
-    expires_at TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    transaction_id INTEGER REFERENCES transactions(id)
-);
-CREATE INDEX IF NOT EXISTS ix_donut_payments_user_id              ON donut_payments (user_id);
-CREATE INDEX IF NOT EXISTS ix_donut_payments_order_id             ON donut_payments (order_id);
-CREATE INDEX IF NOT EXISTS ix_donut_payments_donut_transaction_id ON donut_payments (donut_transaction_id);
-"""
-
-_LAVA_PAYMENTS_DDL = """
-CREATE TABLE IF NOT EXISTS lava_payments (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-    order_id VARCHAR(64) UNIQUE NOT NULL,
-    lava_invoice_id VARCHAR(128) UNIQUE,
-    amount_kopeks INTEGER NOT NULL,
-    currency VARCHAR(10) NOT NULL DEFAULT 'RUB',
-    description TEXT,
-    status VARCHAR(32) NOT NULL DEFAULT 'pending',
-    is_paid BOOLEAN NOT NULL DEFAULT FALSE,
-    payment_url TEXT,
-    payment_method VARCHAR(32),
-    metadata_json JSON,
-    callback_payload JSON,
-    paid_at TIMESTAMP WITH TIME ZONE,
-    expires_at TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    transaction_id INTEGER REFERENCES transactions(id)
-);
-CREATE INDEX IF NOT EXISTS ix_lava_payments_user_id         ON lava_payments (user_id);
-CREATE INDEX IF NOT EXISTS ix_lava_payments_order_id        ON lava_payments (order_id);
-CREATE INDEX IF NOT EXISTS ix_lava_payments_lava_invoice_id ON lava_payments (lava_invoice_id);
-"""
+# asyncpg/PostgreSQL prepared statement не допускает несколько команд за раз
+# (`cannot insert multiple commands into a prepared statement`), поэтому
+# выполняем каждый DDL-оператор отдельно.
+_DDL_STATEMENTS: tuple[str, ...] = (
+    # --- apple_transactions (upstream 0068) ---
+    """
+    CREATE TABLE IF NOT EXISTS apple_transactions (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        transaction_id VARCHAR(64) UNIQUE NOT NULL,
+        original_transaction_id VARCHAR(64),
+        product_id VARCHAR(128) NOT NULL,
+        bundle_id VARCHAR(255) NOT NULL,
+        amount_kopeks INTEGER NOT NULL,
+        environment VARCHAR(16) NOT NULL,
+        status VARCHAR(50) DEFAULT 'verified',
+        is_paid BOOLEAN DEFAULT TRUE,
+        paid_at TIMESTAMP WITH TIME ZONE,
+        refunded_at TIMESTAMP WITH TIME ZONE,
+        transaction_id_fk INTEGER REFERENCES transactions(id),
+        metadata_json JSON,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+    )
+    """,
+    'CREATE INDEX IF NOT EXISTS ix_apple_transactions_transaction_id          ON apple_transactions (transaction_id)',
+    'CREATE INDEX IF NOT EXISTS ix_apple_transactions_original_transaction_id ON apple_transactions (original_transaction_id)',
+    'CREATE INDEX IF NOT EXISTS ix_apple_transactions_user_id                 ON apple_transactions (user_id)',
+    # --- jupiter_payments (upstream 0072) ---
+    """
+    CREATE TABLE IF NOT EXISTS jupiter_payments (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        order_id VARCHAR(64) UNIQUE NOT NULL,
+        jupiter_transaction_id VARCHAR(128) UNIQUE,
+        amount_kopeks INTEGER NOT NULL,
+        currency VARCHAR(10) NOT NULL DEFAULT 'RUB',
+        description TEXT,
+        status VARCHAR(32) NOT NULL DEFAULT 'pending',
+        is_paid BOOLEAN NOT NULL DEFAULT FALSE,
+        payment_url TEXT,
+        payment_method VARCHAR(32),
+        metadata_json JSON,
+        callback_payload JSON,
+        paid_at TIMESTAMP WITH TIME ZONE,
+        expires_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+        transaction_id INTEGER REFERENCES transactions(id)
+    )
+    """,
+    'CREATE INDEX IF NOT EXISTS ix_jupiter_payments_user_id                ON jupiter_payments (user_id)',
+    'CREATE INDEX IF NOT EXISTS ix_jupiter_payments_order_id               ON jupiter_payments (order_id)',
+    'CREATE INDEX IF NOT EXISTS ix_jupiter_payments_jupiter_transaction_id ON jupiter_payments (jupiter_transaction_id)',
+    # --- donut_payments (upstream 0073) ---
+    """
+    CREATE TABLE IF NOT EXISTS donut_payments (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        order_id VARCHAR(64) UNIQUE NOT NULL,
+        donut_transaction_id VARCHAR(128) UNIQUE,
+        amount_kopeks INTEGER NOT NULL,
+        currency VARCHAR(10) NOT NULL DEFAULT 'RUB',
+        description TEXT,
+        status VARCHAR(32) NOT NULL DEFAULT 'pending',
+        is_paid BOOLEAN NOT NULL DEFAULT FALSE,
+        payment_url TEXT,
+        payment_method VARCHAR(32),
+        metadata_json JSON,
+        callback_payload JSON,
+        paid_at TIMESTAMP WITH TIME ZONE,
+        expires_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+        transaction_id INTEGER REFERENCES transactions(id)
+    )
+    """,
+    'CREATE INDEX IF NOT EXISTS ix_donut_payments_user_id              ON donut_payments (user_id)',
+    'CREATE INDEX IF NOT EXISTS ix_donut_payments_order_id             ON donut_payments (order_id)',
+    'CREATE INDEX IF NOT EXISTS ix_donut_payments_donut_transaction_id ON donut_payments (donut_transaction_id)',
+    # --- lava_payments (upstream 0074) ---
+    """
+    CREATE TABLE IF NOT EXISTS lava_payments (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        order_id VARCHAR(64) UNIQUE NOT NULL,
+        lava_invoice_id VARCHAR(128) UNIQUE,
+        amount_kopeks INTEGER NOT NULL,
+        currency VARCHAR(10) NOT NULL DEFAULT 'RUB',
+        description TEXT,
+        status VARCHAR(32) NOT NULL DEFAULT 'pending',
+        is_paid BOOLEAN NOT NULL DEFAULT FALSE,
+        payment_url TEXT,
+        payment_method VARCHAR(32),
+        metadata_json JSON,
+        callback_payload JSON,
+        paid_at TIMESTAMP WITH TIME ZONE,
+        expires_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+        transaction_id INTEGER REFERENCES transactions(id)
+    )
+    """,
+    'CREATE INDEX IF NOT EXISTS ix_lava_payments_user_id         ON lava_payments (user_id)',
+    'CREATE INDEX IF NOT EXISTS ix_lava_payments_order_id        ON lava_payments (order_id)',
+    'CREATE INDEX IF NOT EXISTS ix_lava_payments_lava_invoice_id ON lava_payments (lava_invoice_id)',
+)
 
 
 def upgrade() -> None:
@@ -139,13 +145,8 @@ def upgrade() -> None:
         # На SQLite/dev — пропускаем, там схема собирается через metadata.create_all
         return
 
-    for ddl in (
-        _APPLE_TRANSACTIONS_DDL,
-        _JUPITER_PAYMENTS_DDL,
-        _DONUT_PAYMENTS_DDL,
-        _LAVA_PAYMENTS_DDL,
-    ):
-        op.execute(sa.text(ddl))
+    for statement in _DDL_STATEMENTS:
+        op.execute(sa.text(statement))
 
 
 def downgrade() -> None:
