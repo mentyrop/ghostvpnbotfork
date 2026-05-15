@@ -1,11 +1,11 @@
-"""ensure rollypay_payments table exists
+"""ensure etoplatezhi_payments table exists
 
-Revision ID: 0080
-Revises: 0078
+Revision ID: 0082
+Revises: 0081
 Create Date: 2026-05-10
 
-Some deployments never applied 0059 (branching / duplicate revision ids).
-Idempotent CREATE for admin payment search and RollyPay flows.
+Skipped 0069 on some migration paths; admin search expects this table.
+Idempotent CREATE aligned with 0069_create_etoplatezhi_payments.
 """
 
 from typing import Sequence, Union
@@ -13,8 +13,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = '0080'
-down_revision: Union[str, None] = '0078'
+revision: str = '0089'
+down_revision: Union[str, None] = '0088'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -26,13 +26,13 @@ def _has_table(table: str) -> bool:
 
 
 def upgrade() -> None:
-    if not _has_table('rollypay_payments'):
+    if not _has_table('etoplatezhi_payments'):
         op.create_table(
-            'rollypay_payments',
+            'etoplatezhi_payments',
             sa.Column('id', sa.Integer(), primary_key=True, autoincrement=True),
             sa.Column('user_id', sa.Integer(), sa.ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True),
             sa.Column('order_id', sa.String(64), unique=True, nullable=False, index=True),
-            sa.Column('rollypay_payment_id', sa.String(128), unique=True, nullable=True, index=True),
+            sa.Column('etoplatezhi_payment_id', sa.String(128), unique=True, nullable=True, index=True),
             sa.Column('amount_kopeks', sa.Integer(), nullable=False),
             sa.Column('currency', sa.String(10), nullable=False, server_default='RUB'),
             sa.Column('description', sa.Text(), nullable=True),
@@ -46,12 +46,10 @@ def upgrade() -> None:
             sa.Column('expires_at', sa.DateTime(timezone=True), nullable=True),
             sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
             sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
-            sa.Column(
-                'transaction_id', sa.Integer(), sa.ForeignKey('transactions.id'), nullable=True
-            ),
+            sa.Column('transaction_id', sa.Integer(), sa.ForeignKey('transactions.id'), nullable=True),
         )
 
 
 def downgrade() -> None:
-    if _has_table('rollypay_payments'):
-        op.drop_table('rollypay_payments')
+    if _has_table('etoplatezhi_payments'):
+        op.drop_table('etoplatezhi_payments')
