@@ -11,8 +11,8 @@ This migration deletes the row IFF its stored value is literally
 custom operator value (e.g. ``1.5``, ``2.0``, ``0.95``) is left alone
 — we only clean up rows that were obviously copies of the old default.
 
-Revision ID: 0084
-Revises: 0083
+Revision ID: 0094
+Revises: 0093
 Create Date: 2026-05-16
 """
 
@@ -21,8 +21,8 @@ from typing import Sequence, Union
 from alembic import op
 
 
-revision: str = '0084'
-down_revision: Union[str, None] = '0083'
+revision: str = '0094'
+down_revision: Union[str, None] = '0093'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -6,8 +6,8 @@ the raw platform/deviceModel string. Scope: (user, hwid) — same physical
 device shares the alias across a user's subscriptions in multi-tariff
 mode. ON DELETE CASCADE on user_id ties lifecycle to the account.
 
-Revision ID: 0083
-Revises: 0082
+Revision ID: 0093
+Revises: 0092
 Create Date: 2026-05-16
 
 """
@@ -18,8 +18,8 @@ import sqlalchemy as sa
 from alembic import op
 
 
-revision: str = '0083'
-down_revision: Union[str, None] = '0082'
+revision: str = '0093'
+down_revision: Union[str, None] = '0092'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
