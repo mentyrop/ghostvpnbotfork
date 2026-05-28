@@ -28,6 +28,8 @@
 # Скрипты
 !install_bot.sh
 !main.py
+!scripts/
+!scripts/**
 
 # Статические файлы
 !vpn_logo.png
@@ -104,4 +106,4 @@ Thumbs.db
 bedolaga-cabinet/.env
 bedolaga-cabinet/node_modules/
 bedolaga-cabinet/dist/
-bedolaga-cabinet/cabinet-dist/
+bedolaga
