@@ -106,4 +106,4 @@ Thumbs.db
 bedolaga-cabinet/.env
 bedolaga-cabinet/node_modules/
 bedolaga-cabinet/dist/
-bedolaga
+bedolaga-cabinet/cabinet-dist/
