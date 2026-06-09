@@ -376,7 +376,7 @@ class BackupService:
 
         if hours <= 0:
             logger.warning(
-                'Некорректное значение BACKUP_INTERVAL_HOURS=. Используется значение по умолчанию 24.', hours=hours
+                'Некорректное значение BACKUP_INTERVAL_HOURS. Используется значение по умолчанию 24.', hours=hours
             )
             hours = 24
             self._settings.backup_interval_hours = hours
@@ -492,7 +492,7 @@ class BackupService:
 
     async def restore_backup(self, backup_file_path: str, clear_existing: bool = False) -> tuple[bool, str]:
         try:
-            logger.info('📄 Начинаем восстановление из', backup_file_path=backup_file_path)
+            logger.info('📄 Начинаем восстановление из файла', backup_file_path=backup_file_path)
 
             backup_path = Path(backup_file_path)
             if not await asyncio.to_thread(backup_path.exists):
@@ -730,7 +730,9 @@ class BackupService:
                     backup_data[table_name] = table_data
                     total_records += len(table_data)
 
-                    logger.info('✅ Экспортировано записей из', table_data_count=len(table_data), table_name=table_name)
+                    logger.info(
+                        '✅ Экспортировано записей из таблицы', table_data_count=len(table_data), table_name=table_name
+                    )
 
                 association_data = await self._export_association_tables(db)
                 for records in association_data.values():
@@ -1207,7 +1209,7 @@ class BackupService:
                                 await db.flush()
                         except IntegrityError:
                             logger.warning(
-                                'Дубликат пользователя (id telegram_id=), пропускаем',
+                                'Дубликат пользователя, пропускаем',
                                 processed_data=processed_data.get('id'),
                                 processed_data_2=processed_data.get('telegram_id'),
                             )
@@ -1220,7 +1222,7 @@ class BackupService:
                             await db.flush()
                     except IntegrityError:
                         logger.warning(
-                            'Дубликат пользователя (telegram_id=), пропускаем',
+                            'Дубликат пользователя, пропускаем',
                             processed_data=processed_data.get('telegram_id'),
                         )
                         continue
@@ -1351,7 +1353,7 @@ class BackupService:
                 result = await db.execute(select(table_obj))
                 rows = result.mappings().all()
                 association_data[table_name] = [dict(row) for row in rows]
-                logger.info('✅ Экспортировано связей из', rows_count=len(rows), table_name=table_name)
+                logger.info('✅ Экспортировано связей из таблицы', rows_count=len(rows), table_name=table_name)
             except Exception as e:
                 logger.error('Ошибка экспорта таблицы связей', table_name=table_name, error=e)
 
@@ -1502,7 +1504,7 @@ class BackupService:
                 restored_count += 1
 
             except Exception as e:
-                logger.error('Ошибка восстановления записи в', table_name=table_name, error=e)
+                logger.error('Ошибка восстановления записи в таблицу', table_name=table_name, error=e)
                 logger.error('Проблемные данные', record_data=record_data)
                 raise
 
@@ -1919,7 +1921,7 @@ class BackupService:
 
                 if delay > 0:
                     logger.info(
-                        '⏰ Следующий автоматический бекап запланирован на (через ч)',
+                        '⏰ Запланирован следующий автоматический бекап',
                         next_run=next_run.strftime('%d.%m.%Y %H:%M:%S'),
                         delay=delay / 3600,
                     )

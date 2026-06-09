@@ -329,7 +329,7 @@ def create_payment_router(bot: Bot, payment_service: PaymentService) -> APIRoute
                     return JSONResponse({'status': 'ok'})
 
                 logger.error(
-                    'CryptoBot webhook processing failed: invoice_id',
+                    'CryptoBot webhook processing failed',
                     payload=payload.get('payload', {}).get('invoice_id'),
                 )
                 return JSONResponse(
@@ -437,7 +437,7 @@ def create_payment_router(bot: Bot, payment_service: PaymentService) -> APIRoute
                     return JSONResponse({'status': 'ok'})
 
                 payment_id = webhook_data.get('object', {}).get('id', 'unknown')
-                logger.error('YooKassa webhook processing failed: payment_id', payment_id=payment_id)
+                logger.error('YooKassa webhook processing failed', payment_id=payment_id)
                 return JSONResponse(
                     {'status': 'error', 'reason': 'processing_failed'},
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -508,7 +508,7 @@ def create_payment_router(bot: Bot, payment_service: PaymentService) -> APIRoute
                     return JSONResponse({'status': 'ok'})
 
                 order_id = payload.get('orderId') or payload.get('order_id') or 'unknown'
-                logger.error('Wata webhook processing failed: order_id payload', order_id=order_id, payload=payload)
+                logger.error('Wata webhook processing failed', order_id=order_id, payload=payload)
                 return JSONResponse(
                     {'status': 'error', 'reason': 'not_processed'},
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -572,7 +572,7 @@ def create_payment_router(bot: Bot, payment_service: PaymentService) -> APIRoute
                     return JSONResponse({'status': 'ok'})
 
                 uuid_val = payload.get('uuid', 'unknown')
-                logger.error('Heleket webhook processing failed: uuid', uuid_val=uuid_val)
+                logger.error('Heleket webhook processing failed', uuid_val=uuid_val)
                 return JSONResponse(
                     {'status': 'error', 'reason': 'not_processed'},
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -643,7 +643,7 @@ def create_payment_router(bot: Bot, payment_service: PaymentService) -> APIRoute
                     return JSONResponse({'status': 'ok'})
 
                 bill_id = parsed_payload.get('bill_id', 'unknown')
-                logger.error('Pal24 webhook processing failed: bill_id', bill_id=bill_id)
+                logger.error('Pal24 webhook processing failed', bill_id=bill_id)
                 return JSONResponse(
                     {'status': 'error', 'reason': 'not_processed'},
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -755,7 +755,7 @@ def create_payment_router(bot: Bot, payment_service: PaymentService) -> APIRoute
 
                 # Логируем для диагностики
                 logger.info(
-                    'CloudPayments check webhook received, body_len all_headers',
+                    'CloudPayments check webhook received',
                     raw_body_count=len(raw_body),
                     headers=dict(request.headers),
                 )
@@ -860,7 +860,7 @@ def create_payment_router(bot: Bot, payment_service: PaymentService) -> APIRoute
 
                 # Логируем для диагностики
                 logger.info(
-                    'CloudPayments universal webhook received, body_len headers',
+                    'CloudPayments universal webhook received',
                     raw_body_count=len(raw_body),
                     headers=dict(request.headers),
                 )
@@ -906,7 +906,7 @@ def create_payment_router(bot: Bot, payment_service: PaymentService) -> APIRoute
                 elif status_value in ('Completed', 'Authorized') and is_pay_notification:
                     # Успешная оплата (Pay notification) - есть Reason или AuthCode
                     logger.info(
-                        'CloudPayments Pay notification: invoice reason auth_code',
+                        'CloudPayments Pay notification',
                         webhook_data=webhook_data.get('invoice_id'),
                         reason=reason,
                         auth_code=auth_code,
@@ -920,7 +920,7 @@ def create_payment_router(bot: Bot, payment_service: PaymentService) -> APIRoute
                     # Check notification или другой тип - просто разрешаем (code=0)
                     # Check приходит ДО оплаты для валидации, не зачисляем баланс
                     logger.info(
-                        'CloudPayments Check/other notification: status reason auth_code= - allowing (code=0), NOT crediting balance',
+                        'CloudPayments Check/other notification: allowing (code=0), NOT crediting balance',
                         status_value=status_value,
                         reason=reason,
                         auth_code=auth_code,
@@ -1011,7 +1011,7 @@ def create_payment_router(bot: Bot, payment_service: PaymentService) -> APIRoute
                 if success:
                     return Response('YES', status_code=status.HTTP_200_OK)
 
-                logger.error('Freekassa webhook processing failed: order_id intid', order_id=order_id, intid=intid)
+                logger.error('Freekassa webhook processing failed', order_id=order_id, intid=intid)
                 return Response('Error', status_code=status.HTTP_400_BAD_REQUEST)
             except Exception as e:
                 logger.exception('Freekassa webhook processing error', e=e)
@@ -1086,7 +1086,7 @@ def create_payment_router(bot: Bot, payment_service: PaymentService) -> APIRoute
                 if success:
                     return Response('YES', status_code=status.HTTP_200_OK)
 
-                logger.error('KassaAI webhook processing failed: order_id intid', order_id=order_id, intid=intid)
+                logger.error('KassaAI webhook processing failed', order_id=order_id, intid=intid)
                 return Response('Error', status_code=status.HTTP_400_BAD_REQUEST)
             except Exception as e:
                 logger.exception('KassaAI webhook processing error', e=e)

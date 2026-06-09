@@ -263,7 +263,7 @@ class AutoPaymentVerificationService:
 
         self._task = asyncio.create_task(self._auto_check_loop())
         logger.info(
-            '🔄 Автопроверка пополнений запущена (каждые мин) для',
+            '🔄 Автопроверка пополнений запущена',
             interval_minutes=interval_minutes,
             display_names=display_names,
         )
@@ -357,7 +357,7 @@ class AutoPaymentVerificationService:
                         )
                     elif refreshed.status != record.status:
                         logger.info(
-                            'ℹ️ обновлён: →',
+                            'ℹ️ Статус платежа обновлён',
                             method_display_name=method_display_name(refreshed.method),
                             identifier=refreshed.identifier,
                             record_status=record.status or '—',

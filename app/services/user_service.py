@@ -612,7 +612,7 @@ class UserService:
             await db.refresh(user)
 
             logger.info(
-                "👥 Промогруппа пользователя обновлена на ''",
+                '👥 Промогруппа пользователя обновлена',
                 telegram_id=user.telegram_id,
                 promo_group_name=promo_group.name,
             )
@@ -822,9 +822,7 @@ class UserService:
                 return result
 
             user_id_display = user.telegram_id or user.email or f'#{user.id}'
-            logger.info(
-                '🗑️ Начинаем полное удаление пользователя (ID: )', user_id=user_id, user_id_display=user_id_display
-            )
+            logger.info('🗑️ Начинаем полное удаление пользователя', user_id=user_id, user_id_display=user_id_display)
 
             from app.config import settings
             from app.database.crud.subscription import is_active_paid_subscription
@@ -1416,7 +1414,7 @@ class UserService:
 
             result.bot_deleted = True
             logger.info(
-                '✅ Пользователь (ID: ) полностью удален администратором',
+                '✅ Пользователь полностью удалён администратором',
                 user_id_display=user_id_display,
                 user_id=user_id,
                 admin_id=admin_id,
