@@ -870,6 +870,22 @@ def get_info_menu_keyboard(
             ]
         )
 
+    # Прямые ссылки на юр-документы (работают всегда, независимо от контента в БД и режима меню)
+    if settings.QUICK_INFO_BUTTON_ENABLED:
+        privacy_url = (settings.PRIVACY_POLICY_URL or '').strip()
+        offer_url = (settings.PUBLIC_OFFER_URL or '').strip()
+        support_url = settings.get_support_contact_url()
+        if privacy_url:
+            buttons.append(
+                [InlineKeyboardButton(text='🛡 Политика конфиденциальности', url=privacy_url)]
+            )
+        if offer_url:
+            buttons.append(
+                [InlineKeyboardButton(text='📄 Пользовательское соглашение', url=offer_url)]
+            )
+        if support_url:
+            buttons.append([InlineKeyboardButton(text='💬 Поддержка', url=support_url)])
+
     if show_privacy_policy:
         buttons.append(
             [
