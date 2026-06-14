@@ -314,6 +314,64 @@ async def show_info_menu(
     await callback.answer()
 
 
+async def show_quick_info(
+    callback: types.CallbackQuery,
+    db_user: User,
+    db: AsyncSession,
+):
+    """Быстрые ссылки: поддержка + юр-документы. Временно для согласования кассы."""
+    language = db_user.language if db_user else settings.DEFAULT_LANGUAGE
+    texts = get_texts(language)
+
+    support_url = settings.get_support_contact_url()
+    support_display = settings.get_support_contact_display() or '—'
+    privacy_url = (settings.PRIVACY_POLICY_URL or '').strip()
+    offer_url = (settings.PUBLIC_OFFER_URL or '').strip()
+
+    lines = [
+        texts.t('QUICK_INFO_TITLE', '💡 <b>Помощь и контакты</b>'),
+        '',
+        texts.t(
+            'QUICK_INFO_PROMPT',
+            'Если что-то непонятно — здесь все быстрые ссылки.',
+        ),
+        '',
+        f'• Поддержка: {html.escape(support_display)}',
+        '• Кабинет: управление подпиской, балансом и установкой через кнопки в меню',
+    ]
+    if privacy_url:
+        lines.append('• Политика конфиденциальности — кнопка ниже')
+    if offer_url:
+        lines.append('• Пользовательское соглашение — кнопка ниже')
+
+    caption = '\n'.join(lines)
+
+    keyboard_rows: list[list[types.InlineKeyboardButton]] = []
+    if privacy_url:
+        keyboard_rows.append(
+            [types.InlineKeyboardButton(text='🛡 Политика конфиденциальности', url=privacy_url)]
+        )
+    if offer_url:
+        keyboard_rows.append(
+            [types.InlineKeyboardButton(text='📄 Пользовательское соглашение', url=offer_url)]
+        )
+    if support_url:
+        keyboard_rows.append(
+            [types.InlineKeyboardButton(text='💬 Поддержка', url=support_url)]
+        )
+    keyboard_rows.append(
+        [types.InlineKeyboardButton(text=texts.BACK, callback_data='back_to_menu')]
+    )
+
+    await edit_or_answer_photo(
+        callback=callback,
+        caption=caption,
+        keyboard=types.InlineKeyboardMarkup(inline_keyboard=keyboard_rows),
+        parse_mode='HTML',
+    )
+    await callback.answer()
+
+
 async def show_promo_groups_info(
     callback: types.CallbackQuery,
     db_user: User,
@@ -1528,6 +1586,11 @@ def register_handlers(dp: Dispatcher):
     dp.callback_query.register(
         show_info_menu,
         F.data == 'menu_info',
+    )
+
+    dp.callback_query.register(
+        show_quick_info,
+        F.data == 'menu_quick_info',
     )
 
     dp.callback_query.register(

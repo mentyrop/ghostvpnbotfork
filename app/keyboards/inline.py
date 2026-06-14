@@ -807,6 +807,15 @@ def get_main_menu_keyboard(
         )
     )
 
+    # Временная кнопка с быстрыми ссылками (юр-документы, поддержка) для согласования кассы
+    if settings.QUICK_INFO_BUTTON_ENABLED:
+        paired_buttons.append(
+            InlineKeyboardButton(
+                text=settings.QUICK_INFO_BUTTON_TEXT,
+                callback_data='menu_quick_info',
+            )
+        )
+
     if settings.is_language_selection_enabled():
         paired_buttons.append(InlineKeyboardButton(text=texts.MENU_LANGUAGE, callback_data='menu_language'))
 
