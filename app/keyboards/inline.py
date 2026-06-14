@@ -587,6 +587,14 @@ def _build_cabinet_main_menu_keyboard(
             for i in range(0, len(row_buttons), max_per_row):
                 keyboard_rows.append(row_buttons[i : i + max_per_row])
 
+    # -- Временная кнопка "Информация" (для согласования кассы) --
+    # Добавляется отдельной строкой независимо от раскладки cabinet-меню,
+    # т.к. минимальная раскладка не содержит секцию info.
+    if settings.QUICK_INFO_BUTTON_ENABLED:
+        keyboard_rows.append(
+            [InlineKeyboardButton(text=settings.QUICK_INFO_BUTTON_TEXT, callback_data='menu_quick_info')]
+        )
+
     # -- Moderator panel (only when not admin — admin row handled above) --
     if is_moderator and not is_admin:
         keyboard_rows.append([InlineKeyboardButton(text='🧑‍⚖️ Модерация', callback_data='moderator_panel')])
