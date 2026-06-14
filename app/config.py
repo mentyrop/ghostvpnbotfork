@@ -42,9 +42,9 @@ class Settings(BaseSettings):
     # Временная для прохождения согласования кассы. Можно выключить через .env.
     QUICK_INFO_BUTTON_ENABLED: bool = True
     QUICK_INFO_BUTTON_TEXT: str = '💡 Информация'
-    # Ссылки на юр-документы (по умолчанию — типовые шаблоны кассы, заменить на свои)
-    PRIVACY_POLICY_URL: str = 'https://telegra.ph/Politika-konfidencialnosti-04-01-26'
-    PUBLIC_OFFER_URL: str = 'https://telegra.ph/Polzovatelskoe-soglashenie-04-01-19'
+    # Ссылки на юр-документы GhostVPN (Telegraph)
+    PRIVACY_POLICY_URL: str = 'https://telegra.ph/Politika-konfidencialnosti-06-14-62'
+    PUBLIC_OFFER_URL: str = 'https://telegra.ph/Polzovatelskoe-soglashenie-06-14-37'
     # SLA for support tickets
     SUPPORT_TICKET_SLA_ENABLED: bool = True
     SUPPORT_TICKET_SLA_MINUTES: int = 5
