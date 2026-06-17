@@ -1145,6 +1145,25 @@ def _format_main_menu_base(user: User, texts, subscription_status_inner: str) ->
         f'<code>{html.escape(str(raw_tid), quote=False)}</code>' if raw_tid is not None else '—'
     )
     news_channel = texts.t('MAIN_MENU_NEWS_CHANNEL', '@ghostvless')
+
+    # Персональная ссылка на подписку пользователя — дописываем цитатой прямо
+    # в блок статуса подписки, чтобы не зависеть от плейсхолдеров в локалях.
+    subscription = getattr(user, 'subscription', None)
+    sub_url = getattr(subscription, 'subscription_url', None) if subscription else None
+    sub_url = sub_url.strip() if sub_url else ''
+    if sub_url:
+        link_quote = html.escape(sub_url, quote=False)
+        stripped_status = subscription_status_inner.rstrip()
+        if stripped_status.endswith('</blockquote>'):
+            # Статус уже обёрнут в цитату (мульти-тариф) — кладём ссылку внутрь неё.
+            subscription_status_inner = (
+                stripped_status[: -len('</blockquote>')] + f'\n{link_quote}</blockquote>'
+            )
+        else:
+            subscription_status_inner = (
+                f'{subscription_status_inner}\n<blockquote>{link_quote}</blockquote>'
+            )
+
     return texts.MAIN_MENU.format(
         user_name=html.escape(user.full_name or ''),
         telegram_id=telegram_id,
