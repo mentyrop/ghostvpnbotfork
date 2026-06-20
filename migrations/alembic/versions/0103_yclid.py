@@ -6,8 +6,8 @@ Conversions API keyed by yclid. Unlike the ClientID-based Measurement
 Protocol (session-bound, only attributes the first purchase), the yclid is
 session-independent → repeat purchases by the same user attribute correctly.
 
-Revision ID: 0093
-Revises: 0092
+Revision ID: 0103
+Revises: 0102
 Create Date: 2026-06-11
 """
 
@@ -17,8 +17,8 @@ import sqlalchemy as sa
 from alembic import op
 
 
-revision: str = '0093'
-down_revision: Union[str, None] = '0092'
+revision: str = '0103'
+down_revision: Union[str, None] = '0102'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
