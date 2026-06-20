@@ -1105,9 +1105,7 @@ async def create_payment_link(
             db=db,
             user_id=user.id,
             amount_kopeks=amount_kopeks,
-            description=settings.get_balance_payment_description(
-                amount_kopeks, telegram_user_id=user.telegram_id, user_db_id=user.id
-            ),
+            description=settings.PLATEGA_PAYMENT_DESCRIPTION,
             language=user.language or settings.DEFAULT_LANGUAGE,
             payment_method_code=method_code,
         )

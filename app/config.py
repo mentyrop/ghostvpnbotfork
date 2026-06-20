@@ -560,6 +560,9 @@ class Settings(BaseSettings):
     PLATEGA_MERCHANT_ID: str | None = None
     PLATEGA_SECRET: str | None = None
     PLATEGA_DISPLAY_NAME: str = 'Platega'
+    # Назначение платежа в Platega. Лимит поля — 64 байта (кириллица = 2 байта/символ),
+    # поэтому держим описание коротким, без префикса service_name и ID, чтобы оно не обрезалось.
+    PLATEGA_PAYMENT_DESCRIPTION: str = 'Пополнение баланса'
     PLATEGA_BASE_URL: str = 'https://app.platega.io'
     PLATEGA_RETURN_URL: str | None = None
     PLATEGA_FAILED_URL: str | None = None
