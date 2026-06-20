@@ -42,6 +42,7 @@ from app.middlewares.channel_checker import (
 from app.services.admin_notification_service import AdminNotificationService
 from app.services.campaign_service import AdvertisingCampaignService
 from app.services.channel_subscription_service import channel_subscription_service
+from app.services.guest_purchase_service import GIFT_TOKEN_MIN_PREFIX_LENGTH
 from app.services.main_menu_button_service import MainMenuButtonService
 from app.services.phantom_service import claim_phantom, merge_phantom_into_user
 from app.services.pinned_message_service import (
@@ -135,13 +136,21 @@ async def _activate_pending_gift_after_registration(
         from sqlalchemy import select
         from sqlalchemy.orm import selectinload
 
-        from app.services.guest_purchase_service import activate_purchase as svc_activate
+        from app.services.guest_purchase_service import (
+            GIFT_TOKEN_MIN_PREFIX_LENGTH,
+            activate_purchase as svc_activate,
+        )
 
-        # Support both full token and prefix-based lookup (Telegram truncates long start params)
+        # Support both full token and prefix-based lookup (Telegram truncates the token by
+        # the GIFT_/giftclaim_ prefix length). Require a long minimum prefix so a short,
+        # guessable value can't claim an arbitrary gift via startswith().
         if len(gift_token) >= 64:
             token_filter = GuestPurchase.token == gift_token
-        else:
+        elif len(gift_token) >= GIFT_TOKEN_MIN_PREFIX_LENGTH:
             token_filter = GuestPurchase.token.startswith(gift_token)
+        else:
+            logger.warning('Gift deep link token too short for prefix lookup', token_length=len(gift_token))
+            return
 
         gift_result = await db.execute(
             select(GuestPurchase)
@@ -750,8 +759,36 @@ async def cmd_start(message: types.Message, state: FSMContext, db: AsyncSession,
     start_args = message.text.split()
     start_parameter = None
 
-    if len(start_args) > 1:
-        start_parameter = start_args[1]
+    msg_start_arg = start_args[1] if len(start_args) > 1 else None
+
+    if pending_start_payload and msg_start_arg and pending_start_payload != msg_start_arg:
+        # Одновременно есть аргумент из сообщения и pending payload.
+        # Payload был сохранён при блокировке каналом — это источник
+        # первого касания. Если он является активной кампанией —
+        # он побеждает над свежим аргументом из ссылки в атрибуции.
+        #
+        # Оптимизация: middleware уже проверил payload через БД и выставил
+        # FSM-флаг 'pending_payload_is_campaign'. Используем его, чтобы
+        # не делать повторный запрос в БД на каждом /start.
+        payload_is_campaign = data.get('pending_payload_is_campaign', False)
+        if not payload_is_campaign:
+            pending_first_touch_campaign = await get_campaign_by_start_parameter(
+                db, pending_start_payload, only_active=True
+            )
+            payload_is_campaign = bool(pending_first_touch_campaign)
+            if payload_is_campaign:
+                await state.update_data(pending_payload_is_campaign=True)
+        if payload_is_campaign:
+            start_parameter = pending_start_payload
+            logger.info(
+                '📦 START: pending_start_payload — кампания первого касания, приоритет над новым аргументом',
+                pending_start_payload=pending_start_payload,
+                message_arg=msg_start_arg,
+            )
+        else:
+            start_parameter = msg_start_arg
+    elif msg_start_arg:
+        start_parameter = msg_start_arg
     elif pending_start_payload:
         start_parameter = pending_start_payload
         logger.info('📦 START: Используем сохраненный payload', pending_start_payload=pending_start_payload)
@@ -766,7 +803,9 @@ async def cmd_start(message: types.Message, state: FSMContext, db: AsyncSession,
             if start_parameter.startswith('giftclaim_')
             else start_parameter[5:]  # Strip "GIFT_" prefix
         )
-        if len(gift_token) >= 8:
+        # Reject tokens too short to be a legitimately-truncated gift token — a short prefix
+        # would match (and claim) an arbitrary gift via the startswith lookup downstream.
+        if len(gift_token) >= GIFT_TOKEN_MIN_PREFIX_LENGTH:
             logger.info(
                 'Gift code deep link detected',
                 token_prefix=gift_token[:5],
@@ -2439,6 +2478,24 @@ async def complete_registration(message: types.Message, state: FSMContext, db: A
     logger.info('✅ Регистрация завершена для пользователя', telegram_id=user.telegram_id)
 
 
+def _get_subscription_status_simple(texts):
+    return texts.t('SUBSCRIPTION_NONE', 'Нет активной подписки')
+
+
+def _insert_random_message(base_text: str, random_message: str, action_prompt: str) -> str:
+    if not random_message:
+        return base_text
+
+    prompt = action_prompt or ''
+    if prompt and prompt in base_text:
+        parts = base_text.split(prompt, 1)
+        if len(parts) == 2:
+            return f'{parts[0]}\n{random_message}\n\n{prompt}{parts[1]}'
+        return base_text.replace(prompt, f'\n{random_message}\n\n{prompt}', 1)
+
+    return f'{base_text}\n\n{random_message}'
+
+
 def get_referral_code_keyboard(language: str):
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -2448,6 +2505,35 @@ def get_referral_code_keyboard(language: str):
             [InlineKeyboardButton(text=texts.t('REFERRAL_CODE_SKIP', '⭐️ Пропустить'), callback_data='referral_skip')]
         ]
     )
+
+
+async def get_main_menu_text(user, texts, db: AsyncSession):
+    # Single source of truth: delegate to the menu handler's builder so /start
+    # renders the SAME subscription block as "back to menu" — including the
+    # multi-tariff format (🟢 <tariff> — до …). Previously this had its own
+    # stale formatter, so /start showed the legacy "💎 Активна" status until the
+    # user navigated away and back. See app/handlers/menu.py get_main_menu_text.
+    from app.handlers.menu import get_main_menu_text as build_menu_text
+
+    return await build_menu_text(user, texts, db)
+
+
+async def get_main_menu_text_simple(user_name, texts, db: AsyncSession):
+    base_text = texts.MAIN_MENU.format(
+        user_name=html.escape(user_name or ''), subscription_status=_get_subscription_status_simple(texts)
+    )
+
+    action_prompt = texts.t('MAIN_MENU_ACTION_PROMPT', 'Выберите действие:')
+
+    try:
+        random_message = await get_random_active_message(db)
+        if random_message:
+            return _insert_random_message(base_text, random_message, action_prompt)
+
+    except Exception as e:
+        logger.error('Ошибка получения случайного сообщения', error=e)
+
+    return base_text
 
 
 async def required_sub_channel_check(
