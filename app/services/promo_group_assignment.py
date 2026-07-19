@@ -109,6 +109,11 @@ async def maybe_assign_promo_group_by_total_spent(
 
     total_spent = await get_user_total_spent_kopeks(db, user_id)
     if total_spent <= 0:
+        # Завершаем транзакцию, чтобы снять FOR UPDATE блокировку строки пользователя:
+        # иначе она висит открытой и блокирует FK-проверки в других сессиях.
+        # commit, а не rollback: rollback протухает загруженные объекты (user),
+        # что ломает дальнейшие обращения к ним в async-контексте вызывающего кода
+        await db.commit()
         return None
 
     previous_threshold = user.auto_promo_group_threshold_kopeks or 0
@@ -117,6 +122,8 @@ async def maybe_assign_promo_group_by_total_spent(
     # чтобы промокод-группы всегда очищались при покупке)
     target_group = await _get_best_group_for_spending(db, total_spent)
     if not target_group:
+        # Завершаем транзакцию, чтобы снять FOR UPDATE блокировку (см. выше)
+        await db.commit()
         return None
 
     try:

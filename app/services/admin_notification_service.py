@@ -206,10 +206,15 @@ class AdminNotificationService:
     ) -> None:
         """Persist subscription-related event for external dashboards."""
 
+        # ORM-атрибуты читаем в локальные переменные ДО ошибки: после неудачного
+        # commit сессия «отравлена», и обращение к user.id в except-блоке
+        # кинуло бы PendingRollbackError из самого обработчика ошибки
+        user_id: Any = 'unknown'
         try:
+            user_id = user.id
             await create_subscription_event(
                 db,
-                user_id=user.id,
+                user_id=user_id,
                 event_type=event_type,
                 subscription_id=subscription.id if subscription else None,
                 transaction_id=transaction.id if transaction else None,
@@ -220,21 +225,21 @@ class AdminNotificationService:
                 extra=extra or None,
             )
         except Exception:
-            logger.error(
-                'Не удалось сохранить событие подписки для пользователя',
-                event_type=event_type,
-                getattr=getattr(user, 'id', 'unknown'),
-                exc_info=True,
-            )
-
             try:
                 await db.rollback()
             except Exception:
                 logger.error(
                     'Не удалось выполнить rollback после ошибки события подписки пользователя',
-                    getattr=getattr(user, 'id', 'unknown'),
+                    user_id=user_id,
                     exc_info=True,
                 )
+
+            logger.error(
+                'Не удалось сохранить событие подписки для пользователя',
+                event_type=event_type,
+                user_id=user_id,
+                exc_info=True,
+            )
 
     def _format_promo_group_discounts(self, promo_group: PromoGroup) -> list[str]:
         discount_lines: list[str] = []
@@ -821,6 +826,8 @@ class AdminNotificationService:
     ) -> bool:
         logger.info('Начинаем отправку уведомления о пополнении баланса')
 
+        user_id_label = getattr(user, 'id', 'unknown')
+
         if db:
             try:
                 await self._record_subscription_event(
@@ -844,7 +851,7 @@ class AdminNotificationService:
             except Exception:
                 logger.error(
                     'Не удалось сохранить событие пополнения баланса пользователя',
-                    getattr=getattr(user, 'id', 'unknown'),
+                    user_id=user_id_label,
                     exc_info=True,
                 )
 
